@@ -35,6 +35,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/go-playground/assert/v2 v2.2.0
+	github.com/gobuffalo/flect v1.0.3
 	github.com/goccy/go-reflect v1.2.0
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hazelcast/hazelcast-go-client v1.4.1

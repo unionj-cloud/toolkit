@@ -3,6 +3,7 @@ package v3
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gobuffalo/flect"
 	"github.com/goccy/go-reflect"
 	"github.com/lithammer/shortuuid/v4"
 	log "github.com/sirupsen/logrus"
@@ -70,7 +71,7 @@ func (receiver ProtoGenerator) NewEnum(enumMeta astutils.EnumMeta) Enum {
 		fields = append(fields, receiver.newEnumField(field, i))
 	}
 	return Enum{
-		Name:   strcase.ToCamel(enumMeta.Name),
+		Name:   flect.Capitalize(enumMeta.Name),
 		Fields: fields,
 	}
 }
@@ -121,7 +122,7 @@ func (receiver ProtoGenerator) NewMessage(structmeta astutils.StructMeta) Messag
 		fields = append(fields, receiver.newField(field, i+1))
 	}
 	return Message{
-		Name:       strcase.ToCamel(structmeta.Name),
+		Name:       flect.Capitalize(structmeta.Name),
 		Fields:     fields,
 		Comments:   structmeta.Comments,
 		IsTopLevel: true,
@@ -141,7 +142,7 @@ func (receiver ProtoGenerator) newField(field astutils.FieldMeta, index int) Fie
 	t := receiver.MessageOf(field.Type)
 	if t.Inner() {
 		message := t.(Message)
-		message.Name = strcase.ToCamel(field.Name)
+		message.Name = flect.Capitalize(field.Name)
 		t = message
 	}
 	var fieldName string
@@ -308,7 +309,7 @@ func (receiver ProtoGenerator) handleDefaultCase(ft string) ProtobufType {
 		messageName := elemMessage.GetName()
 		if strings.Contains(elemMessage.GetName(), "repeated ") {
 			messageName = messageName[strings.LastIndex(messageName, ".")+1:]
-			messageName = "Nested" + strcase.ToCamel(messageName)
+			messageName = "Nested" + flect.Capitalize(messageName)
 			fieldName := receiver.fieldNamingFunc(messageName)
 			MessageStore[messageName] = Message{
 				Name: messageName,
@@ -349,7 +350,7 @@ func (receiver ProtoGenerator) handleDefaultCase(ft string) ProtobufType {
 		if unicode.IsUpper(rune(title[0])) {
 			if sliceutils.StringContains(MessageNames, title) {
 				return Message{
-					Name:       strcase.ToCamel(title),
+					Name:       flect.Capitalize(title),
 					IsTopLevel: true,
 				}
 			}

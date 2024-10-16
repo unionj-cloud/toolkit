@@ -2,6 +2,7 @@ package v3
 
 import (
 	"fmt"
+	"github.com/gobuffalo/flect"
 	"github.com/goccy/go-reflect"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -69,7 +70,7 @@ type Service struct {
 
 func (receiver ProtoGenerator) NewService(name, goPackage, version string) Service {
 	return Service{
-		Name:      strcase.ToCamel(name) + "Service",
+		Name:      flect.Capitalize(name) + "Service",
 		Package:   strcase.ToSnake(name),
 		GoPackage: goPackage,
 		Syntax:    Syntax,
@@ -102,7 +103,7 @@ func (receiver ProtoGenerator) NewRpc(method astutils.MethodMeta) *Rpc {
 			return nil
 		}
 	}
-	rpcName := strcase.ToCamel(method.Name) + "Rpc"
+	rpcName := flect.Capitalize(method.Name) + "Rpc"
 	rpcRequest := receiver.newRequest(rpcName, method.Params)
 	if reflect.DeepEqual(rpcRequest, Empty) {
 		ImportStore["google/protobuf/empty.proto"] = struct{}{}
@@ -161,7 +162,7 @@ func (receiver ProtoGenerator) newRequest(rpcName string, params []astutils.Fiel
 		fields = append(fields, receiver.newField(field, i+1))
 	}
 	return Message{
-		Name:       strcase.ToCamel(rpcName + "Request"),
+		Name:       flect.Capitalize(rpcName + "Request"),
 		Fields:     fields,
 		IsTopLevel: true,
 	}
@@ -190,7 +191,7 @@ func (receiver ProtoGenerator) newResponse(rpcName string, params []astutils.Fie
 		fields = append(fields, receiver.newField(field, i+1))
 	}
 	return Message{
-		Name:       strcase.ToCamel(rpcName + "Response"),
+		Name:       flect.Capitalize(rpcName + "Response"),
 		Fields:     fields,
 		IsTopLevel: true,
 	}
