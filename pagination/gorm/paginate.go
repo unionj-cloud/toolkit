@@ -217,9 +217,11 @@ func (r *resContext) Response(res interface{}) Page {
 		Table("(?) AS s1", result)
 
 	if pr.Page >= 0 {
-		result = result.Count(&page.Total).
+		var total int64
+		result = result.Count(&total).
 			Limit(int(causes.Limit)).
 			Offset(int(causes.Offset))
+		page.Total = int32(total)
 	}
 	if result.Error != nil {
 		r.error = result.Error
@@ -248,11 +250,11 @@ func (r *resContext) Response(res interface{}) Page {
 	if math.Mod(f, 1.0) > 0 {
 		f = f + 1
 	}
-	page.TotalPages = int64(f)
-	page.Page = int64(pr.Page)
-	page.Size = int64(pr.Size)
+	page.TotalPages = int32(f)
+	page.Page = pr.Page
+	page.Size = pr.Size
 	page.MaxPage = 0
-	page.Visible = rs.RowsAffected
+	page.Visible = int32(rs.RowsAffected)
 	if page.TotalPages > 0 {
 		page.MaxPage = page.TotalPages - 1
 	}
@@ -695,7 +697,7 @@ type Config struct {
 	Operator             string
 	FieldWrapper         string
 	ValueWrapper         string
-	DefaultSize          int64
+	DefaultSize          int32
 	SmartSearch          bool
 	Statement            *gorm.Statement `json:"-"`
 	CustomParamEnabled   bool
@@ -726,19 +728,19 @@ type pageFilters struct {
 // Page result wrapper
 type Page struct {
 	Items      []interface{} `json:"items"`
-	Page       int64         `json:"page"`
-	Size       int64         `json:"size"`
-	MaxPage    int64         `json:"max_page"`
-	TotalPages int64         `json:"total_pages"`
-	Total      int64         `json:"total"`
+	Page       int32         `json:"page"`
+	Size       int32         `json:"size"`
+	MaxPage    int32         `json:"max_page"`
+	TotalPages int32         `json:"total_pages"`
+	Total      int32         `json:"total"`
 	Last       bool          `json:"last"`
 	First      bool          `json:"first"`
-	Visible    int64         `json:"visible"`
+	Visible    int32         `json:"visible"`
 }
 
 type IParameter interface {
-	GetPage() int64
-	GetSize() int64
+	GetPage() int32
+	GetSize() int32
 	GetSort() string
 	GetOrder() string
 	GetFields() string
@@ -752,14 +754,14 @@ type requestQuery struct {
 	Wheres      []string
 	Params      []interface{}
 	Sorts       []sortOrder
-	Limit       int64
-	Offset      int64
+	Limit       int32
+	Offset      int32
 }
 
 // pageRequest struct
 type pageRequest struct {
-	Size    int64
-	Page    int64
+	Size    int32
+	Page    int32
 	Sorts   []sortOrder
 	Filters pageFilters
 	Config  Config `json:"-"`
