@@ -1,8 +1,10 @@
 package gorm
 
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
+	"github.com/bytedance/sonic/decoder"
 	"github.com/goccy/go-reflect"
 	"log"
 	"math"
@@ -170,7 +172,7 @@ func (r *resContext) Response(res interface{}) Page {
 			for i := range pr.Fields {
 				for j := range r.fieldList {
 					if r.fieldList[j] == pr.Fields[i] {
-						fname := query.Statement.Quote("s." + fieldName(pr.Fields[i]))
+						fname := query.Statement.Quote("S." + fieldName(pr.Fields[i]))
 						if !contains(selects, fname) {
 							selects = append(selects, fname)
 						}
@@ -180,7 +182,7 @@ func (r *resContext) Response(res interface{}) Page {
 			}
 		} else {
 			for i := range r.fieldList {
-				fname := query.Statement.Quote("s." + fieldName(r.fieldList[i]))
+				fname := query.Statement.Quote("S." + fieldName(r.fieldList[i]))
 				if !contains(selects, fname) {
 					selects = append(selects, fname)
 				}
@@ -188,7 +190,7 @@ func (r *resContext) Response(res interface{}) Page {
 		}
 	} else if len(pr.Fields) > 0 && p.Config.FieldSelectorEnabled {
 		for i := range pr.Fields {
-			fname := query.Statement.Quote("s." + fieldName(pr.Fields[i]))
+			fname := query.Statement.Quote("S." + fieldName(pr.Fields[i]))
 			if !contains(selects, fname) {
 				selects = append(selects, fname)
 			}
@@ -197,7 +199,7 @@ func (r *resContext) Response(res interface{}) Page {
 
 	result := dbs.
 		Unscoped().
-		Table("(?) AS s", query)
+		Table(`(?) AS S`, query)
 
 	if len(selects) > 0 {
 		if r.distinct {
@@ -214,7 +216,7 @@ func (r *resContext) Response(res interface{}) Page {
 	dbs = query.Statement.DB.Session(&gorm.Session{NewDB: true})
 	result = dbs.
 		Unscoped().
-		Table("(?) AS s1", result)
+		Table(`(?) AS S1`, result)
 
 	if pr.Page >= 0 {
 		var total int64
@@ -796,7 +798,14 @@ func defaultConfig(c *Config) *Config {
 	}
 
 	if nil == c.JSONUnmarshal {
-		c.JSONUnmarshal = json.Unmarshal
+		c.JSONUnmarshal = func(data []byte, v interface{}) error {
+			dec := decoder.NewStreamDecoder(bytes.NewReader(data))
+			dec.UseInt64()
+			if err := dec.Decode(v); err != nil {
+				return errors.WithStack(err)
+			}
+			return nil
+		}
 	}
 
 	return c

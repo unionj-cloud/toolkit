@@ -4,6 +4,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 	"reflect"
 )
 
@@ -17,7 +18,13 @@ func DeepCopy(src, target interface{}) error {
 	if reflect.ValueOf(target).Kind() != reflect.Ptr {
 		return errors.New("Target should be a pointer")
 	}
-	b, err := json.MarshalToString(src)
+	srcVal := src
+	val, ok := src.(map[string]interface{})
+	if ok {
+		val = maps.Clone(val)
+		srcVal = val
+	}
+	b, err := json.MarshalToString(srcVal)
 	if err != nil {
 		return errors.WithStack(err)
 	}
