@@ -2,20 +2,20 @@ package caches
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"sync"
-
 	"github.com/auxten/postgresql-parser/pkg/sql/parser"
 	"github.com/auxten/postgresql-parser/pkg/sql/sem/tree"
 	"github.com/auxten/postgresql-parser/pkg/walk"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/samber/lo"
 	"github.com/unionj-cloud/toolkit/stringutils"
+	"github.com/unionj-cloud/toolkit/zlogger"
 	"github.com/wubin1989/gorm"
+	"github.com/wubin1989/gorm-dameng"
 	"github.com/wubin1989/mysql"
 	"github.com/wubin1989/postgres"
 	"github.com/xwb1989/sqlparser"
+	"strings"
+	"sync"
 )
 
 type ctxKey int
@@ -263,6 +263,8 @@ func getTables(db *gorm.DB) []string {
 		return getTablesMysql(db)
 	case *postgres.Dialector:
 		return getTablesPostgres(db)
+	case *dameng.Dialector:
+		return getTablesDM(db)
 	}
 	return nil
 }
@@ -270,7 +272,28 @@ func getTables(db *gorm.DB) []string {
 func getTablesMysql(db *gorm.DB) []string {
 	stmt, err := sqlparser.Parse(db.Statement.SQL.String())
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
+		zlogger.Error().Err(err).Msg("parse sql error")
+	}
+	tableNames := make([]string, 0)
+	_ = sqlparser.Walk(func(node sqlparser.SQLNode) (kontinue bool, err error) {
+		switch node := node.(type) {
+		case sqlparser.TableName:
+			tableNames = append(tableNames, node.Name.CompliantName())
+		}
+		return true, nil
+	}, stmt)
+	tableNames = lo.Filter(tableNames, func(x string, index int) bool {
+		return stringutils.IsNotEmpty(x)
+	})
+	tableNames = lo.Uniq(tableNames)
+	return tableNames
+}
+
+func getTablesDM(db *gorm.DB) []string {
+	sqlStr := strings.ReplaceAll(db.Statement.SQL.String(), `"`, "`")
+	stmt, err := sqlparser.Parse(sqlStr)
+	if err != nil {
+		zlogger.Error().Err(err).Msg("parse sql error")
 	}
 	tableNames := make([]string, 0)
 	_ = sqlparser.Walk(func(node sqlparser.SQLNode) (kontinue bool, err error) {
@@ -341,9 +364,6 @@ func getTablesPostgres(db *gorm.DB) []string {
 
 func (c *Caches) storeInCache(db *gorm.DB, identifier string) {
 	if c.Conf.Cacher != nil {
-		if _, ok := db.Statement.Dest.(map[string]interface{}); ok {
-			fmt.Println(db.Statement.Dest)
-		}
 		err := c.Conf.Cacher.Store(identifier, &Query{
 			Tags:         getTables(db),
 			Dest:         db.Statement.Dest,
