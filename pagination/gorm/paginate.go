@@ -691,7 +691,7 @@ func fieldName(field string) string {
 	if strings.HasPrefix(field, `"`) && strings.HasSuffix(field, `"`) {
 		return field
 	}
-	return `"` + strings.ToLower(field) + `"`
+	return `"` + field + `"`
 }
 
 // Config for customize pagination result
