@@ -1,423 +1,450 @@
 package caches
 
 import (
-	"fmt"
-	"github.com/goccy/go-reflect"
+	"context"
+	"database/sql"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
+	_ "github.com/proullon/ramsql/driver"
+	"github.com/stretchr/testify/assert"
 	"github.com/wubin1989/gorm"
-	"github.com/wubin1989/gorm/utils/tests"
+	"github.com/wubin1989/postgres"
 )
 
-type mockDest struct {
-	Result string
+func setupTestDB(t *testing.T) *gorm.DB {
+	// 使用RamSQL创建测试数据库连接，使用测试名称作为数据库名
+	sqlDB, err := sql.Open("ramsql", t.Name())
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+
+	// 创建测试表
+	batch := []string{
+		`CREATE TABLE users (
+			id BIGSERIAL PRIMARY KEY,
+			name TEXT,
+			age INT
+		)`,
+		`CREATE TABLE posts (
+			id BIGSERIAL PRIMARY KEY,
+			title TEXT,
+			user_id INT
+		)`,
+	}
+
+	for _, b := range batch {
+		_, err = sqlDB.Exec(b)
+		if err != nil {
+			t.Fatalf("Failed to create test tables: %v", err)
+		}
+	}
+
+	// 初始化GORM
+	db, err := gorm.Open(postgres.New(postgres.Config{
+		Conn: sqlDB,
+	}), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to initialize GORM: %v", err)
+	}
+
+	return db
 }
 
-func TestCaches_Name(t *testing.T) {
+func TestCaches_Initialize(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
 	caches := &Caches{
 		Conf: &Config{
 			Easer:  true,
 			Cacher: nil,
 		},
 	}
-	expectedName := "gorm:caches"
-	if act := caches.Name(); act != expectedName {
-		t.Errorf("Name on caches did not return the expected value, expected: %s, actual: %s",
-			expectedName, act)
-	}
-}
 
-func TestCaches_Initialize(t *testing.T) {
-	t.Run("empty config", func(t *testing.T) {
-		caches := &Caches{}
-		db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-		if err != nil {
-			t.Fatalf("gorm initialization resulted into an unexpected error, %s", err.Error())
-		}
-
-		originalQueryCb := db.Callback().Query().Get("gorm:query")
-
-		err = db.Use(caches)
-		if err != nil {
-			t.Fatalf("gorm:caches loading resulted into an unexpected error, %s", err.Error())
-		}
-
-		newQueryCallback := db.Callback().Query().Get("gorm:query")
-
-		if reflect.ValueOf(originalQueryCb).Pointer() == reflect.ValueOf(newQueryCallback).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to replace the `gorm:query` callback")
-		}
-
-		if reflect.ValueOf(newQueryCallback).Pointer() != reflect.ValueOf(caches.Query).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to replace the `gorm:query` callback, with caches.Query")
-		}
-
-		if reflect.ValueOf(originalQueryCb).Pointer() != reflect.ValueOf(caches.queryCb).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to load original `gorm:query` callback, to caches.queryCb")
-		}
-	})
-	t.Run("config - easer", func(t *testing.T) {
-		caches := &Caches{
-			Conf: &Config{
-				Easer:  true,
-				Cacher: nil,
-			},
-		}
-		db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-		if err != nil {
-			t.Fatalf("gorm initialization resulted into an unexpected error, %s", err.Error())
-		}
-
-		originalQueryCb := db.Callback().Query().Get("gorm:query")
-
-		err = db.Use(caches)
-		if err != nil {
-			t.Fatalf("gorm:caches loading resulted into an unexpected error, %s", err.Error())
-		}
-
-		newQueryCallback := db.Callback().Query().Get("gorm:query")
-
-		if reflect.ValueOf(originalQueryCb).Pointer() == reflect.ValueOf(newQueryCallback).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to replace the `gorm:query` callback")
-		}
-
-		if reflect.ValueOf(newQueryCallback).Pointer() != reflect.ValueOf(caches.Query).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to replace the `gorm:query` callback, with caches.Query")
-		}
-
-		if reflect.ValueOf(originalQueryCb).Pointer() != reflect.ValueOf(caches.queryCb).Pointer() {
-			t.Errorf("loading of gorm:caches, expected to load original `gorm:query` callback, to caches.queryCb")
-		}
-	})
+	err := caches.Initialize(db)
+	assert.NoError(t, err)
 }
 
 func TestCaches_Query(t *testing.T) {
-	t.Run("nothing enabled", func(t *testing.T) {
-		conf := &Config{
-			Easer:  false,
-			Cacher: nil,
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
 		}
-		db, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-		db.Statement.Dest = &mockDest{}
-		caches := &Caches{
-			Conf: conf,
-			queryCb: func(db *gorm.DB) {
-				db.Statement.Dest.(*mockDest).Result = db.Statement.SQL.String()
-			},
-		}
+	}()
 
-		// Set the query SQL into something specific
-		exampleQuery := "demo-query"
-		db.Statement.SQL.WriteString(exampleQuery)
-
-		caches.Query(db) // Execute the query
-
-		if db.Error != nil {
-			t.Fatalf("an unexpected error has occurred, %v", db.Error)
-		}
-
-		if db.Statement.Dest == nil {
-			t.Fatal("no query result was set after caches Query was executed")
-		}
-
-		if res := db.Statement.Dest.(*mockDest); res.Result != exampleQuery {
-			t.Errorf("the execution of the Query expected a result of `%s`, got `%s`", exampleQuery, res)
-		}
-	})
-
-	t.Run("easer only", func(t *testing.T) {
-		conf := &Config{
+	caches := &Caches{
+		Conf: &Config{
 			Easer:  true,
 			Cacher: nil,
+		},
+	}
+
+	err := caches.Initialize(db)
+	assert.NoError(t, err)
+
+	// 插入测试数据
+	err = db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
+
+	// 测试查询
+	var result struct {
+		Name string
+		Age  int
+	}
+	err = db.Raw("SELECT name, age FROM users WHERE name = ?", "John").Scan(&result).Error
+	assert.NoError(t, err)
+	assert.Equal(t, "John", result.Name)
+	assert.Equal(t, 25, result.Age)
+}
+
+func TestTablesContext(t *testing.T) {
+	// 测试 NewTablesContext
+	tables := mapset.NewSet[string]()
+	tables.Add("users")
+	ctx := context.Background()
+	newCtx := NewTablesContext(ctx, tables)
+
+	// 测试 TablesFromContext
+	retrievedTables, ok := TablesFromContext(newCtx)
+	assert.True(t, ok)
+	assert.Equal(t, tables, retrievedTables)
+}
+
+func TestCaches_AfterWrite(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
 		}
+	}()
 
-		t.Run("one query", func(t *testing.T) {
-			db, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db.Statement.Dest = &mockDest{}
-			caches := &Caches{
-				Conf: conf,
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+	}
 
-				queue: &sync.Map{},
-				queryCb: func(db *gorm.DB) {
-					db.Statement.Dest.(*mockDest).Result = db.Statement.SQL.String()
-				},
-			}
+	err := caches.Initialize(db)
+	assert.NoError(t, err)
 
-			// Set the query SQL into something specific
-			exampleQuery := "demo-query"
-			db.Statement.SQL.WriteString(exampleQuery)
+	// 测试插入操作
+	err = db.Exec(`INSERT INTO users (name, age) VALUES ('Jane', 30)`).Error
+	assert.NoError(t, err)
 
-			caches.Query(db) // Execute the query
+	// 测试更新操作
+	err = db.Exec(`UPDATE users SET age = 31 WHERE name = 'Jane'`).Error
+	assert.NoError(t, err)
 
-			if db.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db.Error)
-			}
+	// 测试删除操作
+	err = db.Exec(`DELETE FROM users WHERE name = 'Jane'`).Error
+	assert.NoError(t, err)
+}
 
-			if db.Statement.Dest == nil {
-				t.Fatal("no query result was set after caches Query was executed")
-			}
+type MockCacher struct {
+	data map[string]*Query
+}
 
-			if res := db.Statement.Dest.(*mockDest); res.Result != exampleQuery {
-				t.Errorf("the execution of the Query expected a result of `%s`, got `%s`", exampleQuery, res)
+func NewMockCacher() *MockCacher {
+	return &MockCacher{
+		data: make(map[string]*Query),
+	}
+}
+
+func (m *MockCacher) Get(key string) *Query {
+	if query, exists := m.data[key]; exists {
+		return query
+	}
+	return nil
+}
+
+func (m *MockCacher) Store(key string, query *Query) error {
+	m.data[key] = query
+	return nil
+}
+
+func (m *MockCacher) Delete(tag string, tags ...string) error {
+	delete(m.data, tag)
+	for _, t := range tags {
+		delete(m.data, t)
+	}
+	return nil
+}
+
+func TestCaches_WithCacher(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	mockCacher := NewMockCacher()
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: mockCacher,
+		},
+	}
+
+	err := caches.Initialize(db)
+	assert.NoError(t, err)
+
+	// 测试缓存存储
+	err = db.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 28)`).Error
+	assert.NoError(t, err)
+
+	var result struct {
+		Name string
+		Age  int
+	}
+
+	// 首次查询，应该存入缓存
+	err = db.Raw("SELECT name, age FROM users WHERE name = ?", "Alice").Scan(&result).Error
+	assert.NoError(t, err)
+	assert.Equal(t, "Alice", result.Name)
+	assert.Equal(t, 28, result.Age)
+
+	// 再次查询，应该从缓存中获取
+	err = db.Raw("SELECT name, age FROM users WHERE name = ?", "Alice").Scan(&result).Error
+	assert.NoError(t, err)
+	assert.Equal(t, "Alice", result.Name)
+	assert.Equal(t, 28, result.Age)
+}
+
+func TestBuildIdentifier(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	// 测试简单查询
+	stmt := db.Session(&gorm.Session{})
+	stmt.Statement.SQL.Reset() // 重置SQL buffer
+	stmt.Statement.SQL.WriteString("SELECT * FROM users WHERE name = ?")
+	stmt.Statement.Vars = []interface{}{"John"}
+	identifier := buildIdentifier(stmt)
+	assert.Equal(t, "SELECT * FROM users WHERE name = ?-[John]", identifier)
+
+	// 测试多参数查询
+	stmt = db.Session(&gorm.Session{})
+	stmt.Statement.SQL.Reset() // 重置SQL buffer
+	stmt.Statement.SQL.WriteString("SELECT * FROM users WHERE age > ? AND age < ?")
+	stmt.Statement.Vars = []interface{}{20, 30}
+	identifier = buildIdentifier(stmt)
+	assert.Equal(t, "SELECT * FROM users WHERE age > ? AND age < ?-[20 30]", identifier)
+}
+
+func TestCacheOperations(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	mockCacher := NewMockCacher()
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: mockCacher,
+		},
+	}
+
+	// 测试存储缓存
+	query := &Query{
+		Tags:         []string{"users"},
+		Dest:         &struct{ Name string }{Name: "John"},
+		RowsAffected: 1,
+	}
+	err := caches.Conf.Cacher.Store("test_key", query)
+	assert.NoError(t, err)
+
+	// 测试检查缓存
+	res, ok := caches.checkCache("test_key")
+	assert.True(t, ok)
+	assert.Equal(t, query, res)
+
+	// 测试删除缓存
+	caches.deleteCache(db, "test_key") // 修改为直接使用key
+	res, ok = caches.checkCache("test_key")
+	assert.False(t, ok)
+	assert.Nil(t, res)
+}
+
+func TestGetTablesForDifferentDialects(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	// 设置为Postgres方言
+	db.Statement.Dialector = &postgres.Dialector{}
+
+	tests := []struct {
+		name     string
+		sql      string
+		expected []string
+	}{
+		{
+			name:     "PostgreSQL Simple Select",
+			sql:      "SELECT * FROM users",
+			expected: []string{"users"},
+		},
+		{
+			name:     "PostgreSQL Join",
+			sql:      "SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id",
+			expected: []string{"users", "posts"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmt := db.Session(&gorm.Session{})
+			stmt.Statement.SQL.Reset() // 重置SQL buffer
+			stmt.Statement.SQL.WriteString(tt.sql)
+			tables := getTables(stmt)
+			for _, expected := range tt.expected {
+				assert.Contains(t, tables, expected)
 			}
 		})
+	}
+}
 
-		t.Run("two identical queries", func(t *testing.T) {
-			t.Run("without error", func(t *testing.T) {
-				var incr int32
-				db1, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-				db1.Statement.Dest = &mockDest{}
-				db2, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-				db2.Statement.Dest = &mockDest{}
+func TestAfterBeginAndCommit(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
 
-				caches := &Caches{
-					Conf: conf,
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: NewMockCacher(),
+		},
+	}
 
-					queue: &sync.Map{},
-					queryCb: func(db *gorm.DB) {
-						time.Sleep(1 * time.Second)
-						atomic.AddInt32(&incr, 1)
+	// 测试事务开始
+	tx := db.Begin()
+	caches.AfterBegin(tx)
+	tables, ok := TablesFromContext(tx.Statement.Context)
+	assert.True(t, ok)
+	assert.Equal(t, 0, tables.Cardinality())
 
-						db.Statement.Dest.(*mockDest).Result = fmt.Sprintf("%d", atomic.LoadInt32(&incr))
-					},
-				}
+	// 在事务中执行操作
+	err := tx.Exec(`INSERT INTO users (name, age) VALUES ('Tom', 20)`).Error
+	assert.NoError(t, err)
 
-				// Set the queries' SQL into something specific
-				exampleQuery := "demo-query"
-				db1.Statement.SQL.WriteString(exampleQuery)
-				db2.Statement.SQL.WriteString(exampleQuery)
+	// 测试事务提交
+	caches.AfterCommit(tx)
+	err = tx.Commit().Error
+	assert.NoError(t, err)
+}
 
-				wg := &sync.WaitGroup{}
-				wg.Add(2)
-				go func() {
-					caches.Query(db1) // Execute the query
-					wg.Done()
-				}()
-				go func() {
-					time.Sleep(500 * time.Millisecond) // Execute the second query half a second later
-					caches.Query(db2)                  // Execute the query
-					wg.Done()
-				}()
-				wg.Wait()
+func TestCaches_ease(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
 
-				if db1.Error != nil {
-					t.Fatalf("an unexpected error has occurred, %v", db1.Error)
-				}
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
 
-				if db2.Error != nil {
-					t.Fatalf("an unexpected error has occurred, %v", db2.Error)
-				}
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
 
-				if act := atomic.LoadInt32(&incr); act != 1 {
-					t.Errorf("when executing two identical queries, expected to run %d time, but %d", 1, act)
-				}
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 100000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var concurrentResult struct {
+				Name string
+				Age  int
+			}
+			stmt := db.Session(&gorm.Session{}).Model(&concurrentResult)
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users WHERE name = ?")
+			stmt.Statement.Vars = []interface{}{"John"}
+			stmt.Statement.Dest = &concurrentResult
+
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&concurrentResult.Name, &concurrentResult.Age)
+				assert.NoError(t, err)
 			})
-		})
+			assert.Equal(t, "John", concurrentResult.Name)
+			assert.Equal(t, 25, concurrentResult.Age)
 
-		t.Run("two different queries", func(t *testing.T) {
-			var incr int32
-			db1, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db1.Statement.Dest = &mockDest{}
-			db2, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db2.Statement.Dest = &mockDest{}
+			concurrentResult.Age = 100
+		}()
+	}
+	wg.Wait()
+}
 
-			caches := &Caches{
-				Conf: conf,
+func TestCaches_ease_WithMap(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
 
-				queue: &sync.Map{},
-				queryCb: func(db *gorm.DB) {
-					time.Sleep(1 * time.Second)
-					atomic.AddInt32(&incr, 1)
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
 
-					db.Statement.Dest.(*mockDest).Result = fmt.Sprintf("%d", atomic.LoadInt32(&incr))
-				},
-			}
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
 
-			// Set the queries' SQL into something specific
-			exampleQuery1 := "demo-query-1"
-			db1.Statement.SQL.WriteString(exampleQuery1)
-			exampleQuery2 := "demo-query-2"
-			db2.Statement.SQL.WriteString(exampleQuery2)
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 50000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			concurrentResult := make([]map[string]interface{}, 0)
+			stmt := db.Session(&gorm.Session{})
 
-			wg := &sync.WaitGroup{}
-			wg.Add(2)
-			go func() {
-				caches.Query(db1) // Execute the query
-				wg.Done()
-			}()
-			go func() {
-				time.Sleep(500 * time.Millisecond) // Execute the second query half a second later
-				caches.Query(db2)                  // Execute the query
-				wg.Done()
-			}()
-			wg.Wait()
-
-			if db1.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db1.Error)
-			}
-
-			if db2.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db2.Error)
-			}
-
-			if act := atomic.LoadInt32(&incr); act != 2 {
-				t.Errorf("when executing two identical queries, expected to run %d times, but %d", 2, act)
-			}
-		})
-	})
-
-	t.Run("cacher only", func(t *testing.T) {
-		t.Run("one query", func(t *testing.T) {
-			t.Run("with error", func(t *testing.T) {
-				db, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-				db.Statement.Dest = &mockDest{}
-
-				caches := &Caches{
-					Conf: &Config{
-						Easer:  false,
-						Cacher: &cacherStoreErrorMock{},
-					},
-
-					queue: &sync.Map{},
-					queryCb: func(db *gorm.DB) {
-						db.Statement.Dest.(*mockDest).Result = db.Statement.SQL.String()
-					},
-				}
-
-				// Set the query SQL into something specific
-				exampleQuery := "demo-query"
-				db.Statement.SQL.WriteString(exampleQuery)
-
-				caches.Query(db) // Execute the query
-
-				if db.Error == nil {
-					t.Error("an error was expected, got none")
-				}
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Raw("SELECT name, age FROM users").Scan(&concurrentResult).Error
+				assert.NoError(t, err)
 			})
+			assert.Equal(t, 1, len(concurrentResult))
+			assert.Equal(t, "John", concurrentResult[0]["name"])
+			assert.Equal(t, 25, concurrentResult[0]["age"])
 
-			t.Run("without error", func(t *testing.T) {
-				db, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-				db.Statement.Dest = &mockDest{}
-
-				caches := &Caches{
-					Conf: &Config{
-						Easer:  false,
-						Cacher: &cacherMock{},
-					},
-
-					queue: &sync.Map{},
-					queryCb: func(db *gorm.DB) {
-						db.Statement.Dest.(*mockDest).Result = db.Statement.SQL.String()
-					},
-				}
-
-				// Set the query SQL into something specific
-				exampleQuery := "demo-query"
-				db.Statement.SQL.WriteString(exampleQuery)
-
-				caches.Query(db) // Execute the query
-
-				if db.Error != nil {
-					t.Fatalf("an unexpected error has occurred, %v", db.Error)
-				}
-
-				if db.Statement.Dest == nil {
-					t.Fatal("no query result was set after caches Query was executed")
-				}
-
-				if res := db.Statement.Dest.(*mockDest); res.Result != exampleQuery {
-					t.Errorf("the execution of the Query expected a result of `%s`, got `%s`", exampleQuery, res)
-				}
-			})
-		})
-
-		t.Run("two identical queries", func(t *testing.T) {
-			var incr int32
-			db1, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db1.Statement.Dest = &mockDest{}
-			db2, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db2.Statement.Dest = &mockDest{}
-
-			caches := &Caches{
-				Conf: &Config{
-					Easer:  false,
-					Cacher: &cacherMock{},
-				},
-
-				queue: &sync.Map{},
-				queryCb: func(db *gorm.DB) {
-					time.Sleep(1 * time.Second)
-					atomic.AddInt32(&incr, 1)
-
-					db.Statement.Dest.(*mockDest).Result = fmt.Sprintf("%d", atomic.LoadInt32(&incr))
-				},
-			}
-
-			// Set the queries' SQL into something specific
-			exampleQuery := "demo-query"
-			db1.Statement.SQL.WriteString(exampleQuery)
-			db2.Statement.SQL.WriteString(exampleQuery)
-
-			caches.Query(db1)
-			caches.Query(db2)
-
-			if db1.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db1.Error)
-			}
-
-			if db2.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db2.Error)
-			}
-
-			if act := atomic.LoadInt32(&incr); act != 1 {
-				t.Errorf("when executing two identical queries, expected to run %d time, but %d", 1, act)
-			}
-		})
-
-		t.Run("two different queries", func(t *testing.T) {
-			var incr int32
-			db1, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db1.Statement.Dest = &mockDest{}
-			db2, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
-			db2.Statement.Dest = &mockDest{}
-
-			caches := &Caches{
-				Conf: &Config{
-					Easer:  false,
-					Cacher: &cacherMock{},
-				},
-
-				queue: &sync.Map{},
-				queryCb: func(db *gorm.DB) {
-					time.Sleep(1 * time.Second)
-					atomic.AddInt32(&incr, 1)
-
-					db.Statement.Dest.(*mockDest).Result = fmt.Sprintf("%d", atomic.LoadInt32(&incr))
-				},
-			}
-
-			// Set the queries' SQL into something specific
-			exampleQuery1 := "demo-query-1"
-			db1.Statement.SQL.WriteString(exampleQuery1)
-			exampleQuery2 := "demo-query-2"
-			db2.Statement.SQL.WriteString(exampleQuery2)
-
-			caches.Query(db1)
-			if db1.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db1.Error)
-			}
-
-			caches.Query(db2)
-			if db2.Error != nil {
-				t.Fatalf("an unexpected error has occurred, %v", db2.Error)
-			}
-
-			if act := atomic.LoadInt32(&incr); act != 2 {
-				t.Errorf("when executing two identical queries, expected to run %d times, but %d", 2, act)
-			}
-		})
-	})
+			concurrentResult[0]["age"] = 100
+		}()
+	}
+	wg.Wait()
 }

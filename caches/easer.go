@@ -1,8 +1,11 @@
 package caches
 
-import "sync"
+import (
+	"reflect"
+	"sync"
+)
 
-func ease(t task, queue *sync.Map) task {
+func ease(t *queryTask, queue *sync.Map) *queryTask {
 	eq := &eased{
 		task: t,
 		wg:   &sync.WaitGroup{},
@@ -16,6 +19,14 @@ func ease(t task, queue *sync.Map) task {
 	if !ok {
 		et.task.Run()
 
+		resultValue := reflect.ValueOf(et.task.db.Statement.Dest)
+
+		if resultValue.IsValid() && resultValue.CanAddr() {
+			elementValue := reflect.ValueOf(et.task.db.Statement.Dest).Elem()
+			et.task.dest = elementValue.Interface()
+			et.task.rowsAffected = et.task.db.Statement.RowsAffected
+		}
+
 		queue.Delete(et.task.GetId())
 		et.wg.Done()
 	}
@@ -25,6 +36,6 @@ func ease(t task, queue *sync.Map) task {
 }
 
 type eased struct {
-	task task
+	task *queryTask
 	wg   *sync.WaitGroup
 }

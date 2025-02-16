@@ -10,5 +10,5 @@ type Query struct {
 
 func (q *Query) replaceOn(db *gorm.DB) {
 	SetPointedValue(db.Statement.Dest, q.Dest)
-	SetPointedValue(&db.Statement.RowsAffected, &q.RowsAffected)
+	db.Statement.RowsAffected = q.RowsAffected
 }

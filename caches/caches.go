@@ -2,20 +2,23 @@ package caches
 
 import (
 	"context"
+	"reflect"
+	"strings"
+	"sync"
+
 	"github.com/auxten/postgresql-parser/pkg/sql/parser"
 	"github.com/auxten/postgresql-parser/pkg/sql/sem/tree"
 	"github.com/auxten/postgresql-parser/pkg/walk"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/samber/lo"
-	"github.com/unionj-cloud/toolkit/stringutils"
-	"github.com/unionj-cloud/toolkit/zlogger"
 	"github.com/wubin1989/gorm"
-	"github.com/wubin1989/gorm-dameng"
+	dameng "github.com/wubin1989/gorm-dameng"
 	"github.com/wubin1989/mysql"
 	"github.com/wubin1989/postgres"
 	"github.com/xwb1989/sqlparser"
-	"strings"
-	"sync"
+
+	"github.com/unionj-cloud/toolkit/stringutils"
+	"github.com/unionj-cloud/toolkit/zlogger"
 )
 
 type ctxKey int
@@ -231,19 +234,23 @@ func (c *Caches) ease(db *gorm.DB, identifier string, callback func(*gorm.DB)) {
 		id:      identifier,
 		db:      db,
 		queryCb: callback,
-	}, c.queue).(*queryTask)
+	}, c.queue)
 
-	if db.Error != nil {
+	if res.db.Error != nil {
+		db.Error = res.db.Error
 		return
 	}
 
 	if res.db.Statement.Dest == db.Statement.Dest {
-		return
+		elementValue := reflect.ValueOf(res.db.Statement.Dest).Elem()
+		elementType := elementValue.Type()
+		v := reflect.New(elementType)
+		db.Statement.Dest = v.Interface()
 	}
 
 	q := Query{
-		Dest:         res.db.Statement.Dest,
-		RowsAffected: res.db.Statement.RowsAffected,
+		Dest:         res.dest,
+		RowsAffected: res.rowsAffected,
 	}
 	q.replaceOn(db)
 }
