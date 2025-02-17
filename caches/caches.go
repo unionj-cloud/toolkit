@@ -2,7 +2,6 @@ package caches
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -238,21 +237,6 @@ func (c *Caches) ease(db *gorm.DB, identifier string, callback func(*gorm.DB)) {
 	if res.db.Error != nil {
 		db.Error = res.db.Error
 		return
-	}
-
-	if res.db.Statement.Dest == db.Statement.Dest {
-
-		resultValue := reflect.ValueOf(res.db.Statement.Dest)
-
-		if resultValue.IsValid() && !resultValue.IsZero() && resultValue.Kind() == reflect.Ptr {
-			elementValue := resultValue.Elem()
-			elementType := elementValue.Type()
-			v := reflect.New(elementType)
-			db.Statement.Dest = v.Interface()
-		} else {
-			return
-		}
-
 	}
 
 	q := Query{

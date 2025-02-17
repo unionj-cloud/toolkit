@@ -3,6 +3,8 @@ package caches
 import (
 	"reflect"
 	"sync"
+
+	"github.com/unionj-cloud/toolkit/copier"
 )
 
 func ease(t *queryTask, queue *sync.Map) *queryTask {
@@ -23,7 +25,11 @@ func ease(t *queryTask, queue *sync.Map) *queryTask {
 
 		if resultValue.IsValid() && !resultValue.IsZero() && resultValue.Kind() == reflect.Ptr {
 			elementValue := resultValue.Elem()
-			et.task.dest = elementValue.Interface()
+			elementType := elementValue.Type()
+			newValue := reflect.New(elementType)
+			et.task.dest = newValue.Interface()
+
+			copier.DeepCopy(et.task.db.Statement.Dest, et.task.dest)
 			et.task.rowsAffected = et.task.db.Statement.RowsAffected
 		} else {
 			et.task.dest = et.task.db.Statement.Dest

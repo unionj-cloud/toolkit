@@ -376,7 +376,7 @@ func TestCaches_ease(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -439,7 +439,7 @@ func TestCaches_ease_WithStructSlice(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -495,7 +495,7 @@ func TestCaches_ease_WithPtrStructSlice(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -551,7 +551,7 @@ func TestCaches_ease_WithMapSlice(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -619,7 +619,7 @@ func TestCaches_ease_WithPtrMapSlice(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -687,7 +687,7 @@ func TestCaches_ease_WithMap(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
