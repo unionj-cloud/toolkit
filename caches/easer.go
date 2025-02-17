@@ -21,9 +21,12 @@ func ease(t *queryTask, queue *sync.Map) *queryTask {
 
 		resultValue := reflect.ValueOf(et.task.db.Statement.Dest)
 
-		if resultValue.IsValid(){
-			elementValue := reflect.ValueOf(et.task.db.Statement.Dest).Elem()
+		if resultValue.IsValid() && !resultValue.IsZero() && resultValue.Kind() == reflect.Ptr {
+			elementValue := resultValue.Elem()
 			et.task.dest = elementValue.Interface()
+			et.task.rowsAffected = et.task.db.Statement.RowsAffected
+		} else {
+			et.task.dest = et.task.db.Statement.Dest
 			et.task.rowsAffected = et.task.db.Statement.RowsAffected
 		}
 

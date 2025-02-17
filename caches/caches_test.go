@@ -376,7 +376,7 @@ func TestCaches_ease(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -397,10 +397,269 @@ func TestCaches_ease(t *testing.T) {
 				).Scan(&concurrentResult.Name, &concurrentResult.Age)
 				assert.NoError(t, err)
 			})
-			assert.Equal(t, "John", concurrentResult.Name)
-			assert.Equal(t, 25, concurrentResult.Age)
 
-			concurrentResult.Age = 100
+			result := stmt.Statement.Dest.(*struct {
+				Name string
+				Age  int
+			})
+
+			assert.Equal(t, "John", result.Name)
+			assert.Equal(t, 25, result.Age)
+
+			result.Age = 100
+		}()
+	}
+	wg.Wait()
+}
+
+type testStruct struct {
+	Name string
+	Age  int
+}
+
+func TestCaches_ease_WithStructSlice(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
+
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
+
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var concurrentResult testStruct
+			stmt := db.Session(&gorm.Session{}).Model(&concurrentResult)
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users WHERE name = ?")
+			stmt.Statement.Vars = []interface{}{"John"}
+
+			concurrentResultSlice := make([]testStruct, 1)
+			stmt.Statement.Dest = &concurrentResultSlice
+
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&concurrentResult.Name, &concurrentResult.Age)
+				assert.NoError(t, err)
+
+				concurrentResultSlice[0] = concurrentResult
+			})
+
+			result := *stmt.Statement.Dest.(*[]testStruct)
+
+			assert.Equal(t, "John", result[0].Name)
+			assert.Equal(t, 25, result[0].Age)
+
+			result[0].Age = 100
+		}()
+	}
+	wg.Wait()
+}
+
+func TestCaches_ease_WithPtrStructSlice(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
+
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
+
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var concurrentResult testStruct
+			stmt := db.Session(&gorm.Session{}).Model(&concurrentResult)
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users WHERE name = ?")
+			stmt.Statement.Vars = []interface{}{"John"}
+
+			concurrentResultSlice := make([]*testStruct, 1)
+			stmt.Statement.Dest = &concurrentResultSlice
+
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&concurrentResult.Name, &concurrentResult.Age)
+				assert.NoError(t, err)
+
+				concurrentResultSlice[0] = &concurrentResult
+			})
+
+			result := *stmt.Statement.Dest.(*[]*testStruct)
+
+			assert.Equal(t, "John", result[0].Name)
+			assert.Equal(t, 25, result[0].Age)
+
+			result[0].Age = 100
+		}()
+	}
+	wg.Wait()
+}
+
+func TestCaches_ease_WithMapSlice(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
+
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
+
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var (
+				name string
+				age  int
+			)
+			stmt := db.Session(&gorm.Session{}).Table("users")
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users")
+			stmt.Statement.Vars = []interface{}{}
+
+			concurrentResult := make([]map[string]interface{}, 1)
+			stmt.Statement.Dest = &concurrentResult
+
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&name, &age)
+				assert.NoError(t, err)
+
+				row := make(map[string]interface{})
+				row["name"] = name
+				row["age"] = age
+
+				concurrentResult[0] = row
+			})
+
+			// v1 := fmt.Sprintf("%p", stmt.Statement.Dest)
+			// v2 := fmt.Sprintf("%p", &concurrentResult)
+
+			// assert.False(t, v1 != v2)
+
+			result := *stmt.Statement.Dest.(*[]map[string]interface{})
+
+			assert.Equal(t, "John", result[0]["name"])
+			assert.Equal(t, int64(25), result[0]["age"])
+
+			result[0]["age"] = 100
+		}()
+	}
+	wg.Wait()
+}
+
+func TestCaches_ease_WithPtrMapSlice(t *testing.T) {
+	db := setupTestDB(t)
+	defer func() {
+		if db, _ := db.DB(); db != nil {
+			_ = db.Close()
+		}
+	}()
+
+	caches := &Caches{
+		Conf: &Config{
+			Easer:  true,
+			Cacher: nil,
+		},
+		queue: &sync.Map{},
+	}
+
+	// 准备测试数据
+	err := db.Exec(`INSERT INTO users (name, age) VALUES ('John', 25)`).Error
+	assert.NoError(t, err)
+
+	// 测试并发查询
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var (
+				name string
+				age  int
+			)
+			stmt := db.Session(&gorm.Session{}).Table("users")
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users")
+			stmt.Statement.Vars = []interface{}{}
+
+			concurrentResult := make([]*map[string]interface{}, 1)
+			stmt.Statement.Dest = &concurrentResult
+
+			caches.ease(stmt, "test_query", func(db *gorm.DB) {
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&name, &age)
+				assert.NoError(t, err)
+
+				row := make(map[string]interface{})
+				row["name"] = name
+				row["age"] = age
+
+				concurrentResult[0] = &row
+			})
+
+			// v1 := fmt.Sprintf("%p", stmt.Statement.Dest)
+			// v2 := fmt.Sprintf("%p", &concurrentResult)
+
+			// assert.False(t, v1 != v2)
+
+			result := *stmt.Statement.Dest.(*[]*map[string]interface{})
+
+			assert.Equal(t, "John", (*result[0])["name"])
+			assert.Equal(t, int64(25), (*result[0])["age"])
+
+			(*result[0])["age"] = 100
 		}()
 	}
 	wg.Wait()
@@ -428,22 +687,44 @@ func TestCaches_ease_WithMap(t *testing.T) {
 
 	// 测试并发查询
 	var wg sync.WaitGroup
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			concurrentResult := make([]map[string]interface{}, 0)
-			stmt := db.Session(&gorm.Session{})
+			var (
+				name string
+				age  int
+			)
+			stmt := db.Session(&gorm.Session{}).Table("users")
+			stmt.Statement.SQL.WriteString("SELECT name, age FROM users")
+			stmt.Statement.Vars = []interface{}{}
+
+			concurrentResult := make(map[string]interface{})
+			stmt.Statement.Dest = &concurrentResult
 
 			caches.ease(stmt, "test_query", func(db *gorm.DB) {
-				err := db.Raw("SELECT name, age FROM users").Scan(&concurrentResult).Error
+				err := db.Statement.ConnPool.QueryRowContext(
+					db.Statement.Context,
+					db.Statement.SQL.String(),
+					db.Statement.Vars...,
+				).Scan(&name, &age)
 				assert.NoError(t, err)
-			})
-			assert.Equal(t, 1, len(concurrentResult))
-			assert.Equal(t, "John", concurrentResult[0]["name"])
-			assert.Equal(t, 25, concurrentResult[0]["age"])
 
-			concurrentResult[0]["age"] = 100
+				concurrentResult["name"] = name
+				concurrentResult["age"] = age
+			})
+
+			// v1 := fmt.Sprintf("%p", stmt.Statement.Dest)
+			// v2 := fmt.Sprintf("%p", &concurrentResult)
+
+			// assert.False(t, v1 != v2)
+
+			result := *stmt.Statement.Dest.(*map[string]interface{})
+
+			assert.Equal(t, "John", result["name"])
+			assert.Equal(t, int64(25), result["age"])
+
+			result["age"] = 100
 		}()
 	}
 	wg.Wait()

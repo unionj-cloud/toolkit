@@ -224,8 +224,7 @@ func (c *Caches) AfterCommit(db *gorm.DB) {
 }
 
 func (c *Caches) ease(db *gorm.DB, identifier string, callback func(*gorm.DB)) {
-	if c.Conf.Easer == false {
-		//if true {
+	if !c.Conf.Easer {
 		callback(db)
 		return
 	}
@@ -242,10 +241,18 @@ func (c *Caches) ease(db *gorm.DB, identifier string, callback func(*gorm.DB)) {
 	}
 
 	if res.db.Statement.Dest == db.Statement.Dest {
-		elementValue := reflect.ValueOf(res.db.Statement.Dest).Elem()
-		elementType := elementValue.Type()
-		v := reflect.New(elementType)
-		db.Statement.Dest = v.Interface()
+
+		resultValue := reflect.ValueOf(res.db.Statement.Dest)
+
+		if resultValue.IsValid() && !resultValue.IsZero() && resultValue.Kind() == reflect.Ptr {
+			elementValue := resultValue.Elem()
+			elementType := elementValue.Type()
+			v := reflect.New(elementType)
+			db.Statement.Dest = v.Interface()
+		} else {
+			return
+		}
+
 	}
 
 	q := Query{

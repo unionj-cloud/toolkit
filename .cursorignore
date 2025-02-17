@@ -1,0 +1,41 @@
+# 忽略编译生成的文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 忽略依赖目录
+vendor/
+
+# 忽略Go工作区文件
+go.work
+go.work.sum
+
+# 忽略环境文件
+.env
+
+# 忽略IDE配置文件
+.idea/
+.vscode/
+
+# 忽略Git相关文件
+.git/
+.gitignore
+
+# 忽略测试相关文件
+_test/
+*.test
+
+# 忽略缓存文件
+*.local
+.DS_Store
+
+# 忽略生成的OpenAPI文件
+swaggerV2ToV3*
+
+# 忽略临时文件
+*.tmp
+*.temp 

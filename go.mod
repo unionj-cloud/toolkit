@@ -42,6 +42,7 @@ require (
 	github.com/mholt/archiver/v3 v3.5.1
 	github.com/morkid/gocache v1.0.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
+	github.com/proullon/ramsql v0.1.4
 	github.com/redis/rueidis v1.0.38
 	github.com/redis/rueidis/mock v1.0.38
 	github.com/redis/rueidis/rueidiscompat v1.0.38
@@ -83,7 +84,6 @@ require (
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pegasus-kv/thrift v0.13.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/proullon/ramsql v0.1.4 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.12 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
