@@ -6,14 +6,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/goccy/go-reflect"
+	"github.com/unionj-cloud/toolkit/utils"
 	"go/ast"
 	"go/format"
+	"golang.org/x/tools/imports"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
+	"time"
 	"unicode"
 
 	"github.com/samber/lo"
@@ -99,37 +103,40 @@ func RestRelatedModify(src []byte, metaName string) []byte {
 
 // FixImport format source code and add missing import syntax automatically
 func FixImport(src []byte, file string) {
-	//defer utils.TimeTrack(time.Now(), fmt.Sprintf("FixImport: %s", file), logrus.StandardLogger())
-	// here import format cause performance issue on some computer
-	//var (
-	//	res []byte
-	//	err error
-	//)
-	//if res, err = imports.Process(file, src, &imports.Options{
-	//	TabWidth:  8,
-	//	TabIndent: true,
-	//	Comments:  true,
-	//	Fragment:  true,
-	//}); err != nil {
-	//	lines := strings.Split(string(src), "\n")
-	//	errLine, _ := strconv.Atoi(strings.Split(err.Error(), ":")[1])
-	//	startLine, endLine := errLine-5, errLine+5
-	//	fmt.Println("Format fail:", errLine, err)
-	//	if startLine < 0 {
-	//		startLine = 0
-	//	}
-	//	if endLine > len(lines)-1 {
-	//		endLine = len(lines) - 1
-	//	}
-	//	for i := startLine; i <= endLine; i++ {
-	//		fmt.Println(i, lines[i])
-	//	}
-	//	errors.WithStack(fmt.Errorf("cannot format file: %w", err))
-	//} else {
-	//	_ = ioutil.WriteFile(file, res, os.ModePerm)
-	//	return
-	//}
-	_ = ioutil.WriteFile(file, src, os.ModePerm)
+	fixImport := os.Getenv("GDD_FIX_IMPORT")
+	if fixImport == "off" {
+		_ = ioutil.WriteFile(file, src, os.ModePerm)
+		return
+	}
+	defer utils.TimeTrack(time.Now(), fmt.Sprintf("FixImport: %s", file), logrus.StandardLogger())
+	logrus.Warn("For some kind of devices, imports auto-fixing may have poor performance, when run go-doudou cli command you can prefix export GDD_FIX_IMPORT=off && to disable this feature and manually fix imports problems.")
+	var (
+		res []byte
+		err error
+	)
+	if res, err = imports.Process(file, src, &imports.Options{
+		TabWidth:  8,
+		TabIndent: true,
+		Comments:  true,
+		Fragment:  true,
+	}); err != nil {
+		lines := strings.Split(string(src), "\n")
+		errLine, _ := strconv.Atoi(strings.Split(err.Error(), ":")[1])
+		startLine, endLine := errLine-5, errLine+5
+		logrus.Println("Format fail:", errLine, err)
+		if startLine < 0 {
+			startLine = 0
+		}
+		if endLine > len(lines)-1 {
+			endLine = len(lines) - 1
+		}
+		for i := startLine; i <= endLine; i++ {
+			logrus.Println(i, lines[i])
+		}
+		_ = ioutil.WriteFile(file, src, os.ModePerm)
+		return
+	}
+	_ = ioutil.WriteFile(file, res, os.ModePerm)
 }
 
 // GetMethodMeta get method name then new MethodMeta struct from *ast.FuncDecl
