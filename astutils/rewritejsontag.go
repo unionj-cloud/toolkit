@@ -29,6 +29,15 @@ func extractJsonPropName(tag string) string {
 	return ""
 }
 
+func extractNamePropName(tag string) string {
+	re := regexp.MustCompile(`name:"(.*?)"`)
+	if re.MatchString(tag) {
+		subs := re.FindAllStringSubmatch(tag, -1)
+		return strings.TrimSpace(strings.Split(subs[0][1], ",")[0])
+	}
+	return ""
+}
+
 func extractFormPropName(tag string) string {
 	re := regexp.MustCompile(`form:"(.*?)"`)
 	if re.MatchString(tag) {
@@ -55,6 +64,7 @@ func RewriteTag(config RewriteTagConfig) (string, error) {
 	}
 	re := regexp.MustCompile(`json:"(.*?)"`)
 	reForm := regexp.MustCompile(`form:"(.*?)"`)
+	reName := regexp.MustCompile(`name:"(.*?)"`)
 	astutil.Apply(root, func(cursor *astutil.Cursor) bool {
 		return true
 	}, func(cursor *astutil.Cursor) bool {
@@ -71,6 +81,11 @@ func RewriteTag(config RewriteTagConfig) (string, error) {
 				continue
 			}
 			tagValue := convert(field.Names[0].Name)
+			hasNameTag := reName.MatchString(field.Tag.Value)
+			if hasNameTag {
+				tagValue = extractNamePropName(field.Tag.Value)
+			}
+
 			jsonTagValue := tagValue
 			if omitempty {
 				jsonTagValue += ",omitempty"
