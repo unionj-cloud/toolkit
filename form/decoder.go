@@ -6,7 +6,6 @@ import (
 	"github.com/samber/lo"
 	"log"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +18,11 @@ const (
 )
 
 type decoder struct {
-	d         *Decoder
-	errs      DecodeErrors
-	dm        dataMap
-	values    url.Values
-	decoded   []string
+	d      *Decoder
+	errs   DecodeErrors
+	dm     dataMap
+	values url.Values
+	//decoded   []string
 	maxKeyLen int
 	namespace []byte
 }
@@ -361,9 +360,9 @@ func (d *decoder) populateSlice(ok bool, arr []string, v reflect.Value, namespac
 }
 
 func (d *decoder) setFieldByType(current reflect.Value, namespace []byte, idx int) (set bool) {
-	if slices.Contains(d.decoded, string(namespace)) {
-		return false
-	}
+	//if slices.Contains(d.decoded, string(namespace)) {
+	//	return false
+	//}
 
 	var err error
 	v, kind := ExtractType(current)
@@ -657,9 +656,9 @@ func (d *decoder) setFieldByType(current reflect.Value, namespace []byte, idx in
 		set = d.traverseStruct(v, typ, namespace)
 	}
 
-	if set {
-		d.decoded = append(d.decoded, string(namespace))
-	}
+	//if set {
+	//	d.decoded = append(d.decoded, string(namespace))
+	//}
 	return
 }
 
