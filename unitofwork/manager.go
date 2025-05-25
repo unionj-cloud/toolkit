@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/wubin1989/gorm"
+
 	"github.com/unionj-cloud/toolkit/caches"
 	"github.com/unionj-cloud/toolkit/zlogger"
-	"github.com/wubin1989/gorm"
 )
 
 // Manager 工作单元管理器
@@ -51,9 +52,6 @@ func (m *Manager) ExecuteInUnitOfWork(ctx context.Context, fn func(*UnitOfWork) 
 	// 设置当前工作单元
 	m.setCurrentUoW(uow)
 	defer m.clearCurrentUoW()
-
-	// 将工作单元放入上下文
-	ctx = context.WithValue(ctx, m.contextKey, uow)
 
 	// 执行业务逻辑
 	if err := fn(uow); err != nil {

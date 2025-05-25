@@ -1158,7 +1158,7 @@ func ExampleUnitOfWork_AuditTrail() {
 
 	fmt.Printf("审计跟踪完成：用户ID %v，操作者 %s\n",
 		user.GetID(), ctx.Value("operator_id"))
-	// Output: 审计跟踪完成：用户ID 1，创建者 admin
+	// Output: 审计跟踪完成：用户ID 1，操作者 admin
 }
 
 // ExampleUnitOfWork_ComplexQueries 复杂查询集成示例
@@ -1281,17 +1281,11 @@ func ExampleUnitOfWork_CallbackHooks() {
 
 	uow := NewUnitOfWork(db, WithDetailLog(true))
 
-	// 设置操作前回调
-	beforeCommitCalled := false
-	afterCommitCalled := false
-
 	// 模拟设置回调（实际实现中可能需要扩展UnitOfWork接口）
 	ctx := context.WithValue(context.Background(), "before_commit", func() {
-		beforeCommitCalled = true
 		fmt.Println("执行提交前回调")
 	})
 	ctx = context.WithValue(ctx, "after_commit", func() {
-		afterCommitCalled = true
 		fmt.Println("执行提交后回调")
 	})
 	uow = uow.WithContext(ctx)
