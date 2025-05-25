@@ -68,12 +68,14 @@ func (t OperationType) String() string {
 // InsertOperation 插入操作
 type InsertOperation struct {
 	entity Entity
+	uow    *UnitOfWork
 }
 
 // NewInsertOperation 创建插入操作
-func NewInsertOperation(entity Entity) *InsertOperation {
+func NewInsertOperation(entity Entity, uow *UnitOfWork) *InsertOperation {
 	return &InsertOperation{
 		entity: entity,
+		uow:    uow,
 	}
 }
 
@@ -145,7 +147,7 @@ func (op *InsertOperation) Merge(other Operation) Operation {
 	}
 
 	entities := []Entity{op.entity, other.GetEntity()}
-	return NewBulkInsertOperation(entities)
+	return NewBulkInsertOperation(entities, op)
 }
 
 // UpdateOperation 更新操作
@@ -280,7 +282,10 @@ func (op *DeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
 	// 软删除处理
 	if softDeletable, ok := op.entity.(SoftDelete); ok {
 		now := time.Now()
-		softDeletable.SetDeletedAt(&now)
+		softDeletable.SetDeletedAt(gorm.DeletedAt{
+			Time:  now,
+			Valid: true,
+		})
 
 		// 设置更新时间戳
 		if timestamped, ok := op.entity.(HasTimestamps); ok {
@@ -293,7 +298,7 @@ func (op *DeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
 		}
 	} else {
 		// 硬删除
-		result := db.WithContext(ctx).Delete(op.entity)
+		result := db.WithContext(ctx).Unscoped().Delete(op.entity)
 		if result.Error != nil {
 			return fmt.Errorf("failed to delete entity %T: %w", op.entity, result.Error)
 		}
@@ -340,20 +345,22 @@ func (op *DeleteOperation) Merge(other Operation) Operation {
 
 // BulkInsertOperation 批量插入操作
 type BulkInsertOperation struct {
-	entities   []Entity
-	entityType reflect.Type
+	entities        []Entity
+	entityType      reflect.Type
+	insertOperation *InsertOperation
 }
 
 // NewBulkInsertOperation 创建批量插入操作
-func NewBulkInsertOperation(entities []Entity) *BulkInsertOperation {
+func NewBulkInsertOperation(entities []Entity, insertOperation *InsertOperation) *BulkInsertOperation {
 	var entityType reflect.Type
 	if len(entities) > 0 {
 		entityType = reflect.TypeOf(entities[0])
 	}
 
 	return &BulkInsertOperation{
-		entities:   entities,
-		entityType: entityType,
+		entities:        entities,
+		entityType:      entityType,
+		insertOperation: insertOperation,
 	}
 }
 
@@ -365,6 +372,25 @@ func (op *BulkInsertOperation) GetEntityType() reflect.Type {
 // GetOperationType 实现Operation接口
 func (op *BulkInsertOperation) GetOperationType() OperationType {
 	return OperationTypeBulkInsert
+}
+
+func ConvertToTypedSlice(input []Entity, elemType reflect.Type) interface{} {
+	// 创建新的切片类型：[]T
+	sliceType := reflect.SliceOf(elemType)
+	result := reflect.MakeSlice(sliceType, 0, len(input))
+
+	for _, item := range input {
+		v := reflect.ValueOf(item)
+
+		// 类型检查：防止非法转换
+		if !v.Type().AssignableTo(elemType) {
+			panic(fmt.Sprintf("元素类型 %v 不能转换为 %v", v.Type(), elemType))
+		}
+
+		result = reflect.Append(result, v)
+	}
+
+	return result.Interface() // 返回 interface{}，你可以断言回来
 }
 
 // Execute 实现Operation接口
@@ -390,7 +416,8 @@ func (op *BulkInsertOperation) Execute(ctx context.Context, db *gorm.DB) error {
 	}
 
 	// 批量插入
-	result := db.WithContext(ctx).CreateInBatches(op.entities, 1000)
+	typedSlice := ConvertToTypedSlice(op.entities, op.GetEntityType())
+	result := db.WithContext(ctx).CreateInBatches(typedSlice, op.insertOperation.uow.config.BatchSize)
 	if result.Error != nil {
 		return fmt.Errorf("failed to bulk insert entities %T: %w", op.entityType, result.Error)
 	}
@@ -433,7 +460,7 @@ func (op *BulkInsertOperation) Merge(other Operation) Operation {
 		allEntities = append(allEntities, bulkOther.entities...)
 	}
 
-	return NewBulkInsertOperation(allEntities)
+	return NewBulkInsertOperation(allEntities, op.insertOperation)
 }
 
 // GetEntities 获取所有实体

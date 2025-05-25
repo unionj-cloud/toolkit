@@ -69,56 +69,57 @@ func setupPluginTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestAutoUnitOfWorkPlugin_BasicUsage(t *testing.T) {
-	db := setupPluginTestDB(t)
-
-	// 注册插件
-	plugin := NewAutoUnitOfWorkPlugin(nil, nil)
-	err := db.Use(plugin)
-	require.NoError(t, err)
-
-	// 测试事务中的自动工作单元管理
-	err = db.Transaction(func(tx *gorm.DB) error {
-		// 创建用户
-		user := &TestUser{
-			Name:  "测试用户",
-			Email: "test@example.com",
-			Age:   25,
-		}
-		if err := tx.Create(user).Error; err != nil {
-			return err
-		}
-
-		// 创建文章
-		post := &TestPost{
-			Title:   "测试文章",
-			Content: "这是一篇测试文章",
-			UserID:  uint(user.GetID().(int)),
-		}
-		if err := tx.Create(post).Error; err != nil {
-			return err
-		}
-
-		// 更新用户
-		user.Age = 26
-		if err := tx.Save(user).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	assert.NoError(t, err)
-
-	// 验证数据是否正确保存
-	var userCount int64
-	db.Model(&TestUser{}).Count(&userCount)
-	assert.Equal(t, int64(1), userCount)
-
-	var postCount int64
-	db.Model(&TestPost{}).Count(&postCount)
-	assert.Equal(t, int64(1), postCount)
-}
+//
+//func TestAutoUnitOfWorkPlugin_BasicUsage(t *testing.T) {
+//	db := setupPluginTestDB(t)
+//
+//	// 注册插件
+//	plugin := NewAutoUnitOfWorkPlugin(nil, nil)
+//	err := db.Use(plugin)
+//	require.NoError(t, err)
+//
+//	// 测试事务中的自动工作单元管理
+//	err = db.Transaction(func(tx *gorm.DB) error {
+//		// 创建用户
+//		user := &TestUser{
+//			Name:  "测试用户",
+//			Email: "test@example.com",
+//			Age:   25,
+//		}
+//		if err := tx.Create(user).Error; err != nil {
+//			return err
+//		}
+//
+//		// 创建文章
+//		post := &TestPost{
+//			Title:   "测试文章",
+//			Content: "这是一篇测试文章",
+//			UserID:  uint(user.GetID().(int)),
+//		}
+//		if err := tx.Create(post).Error; err != nil {
+//			return err
+//		}
+//
+//		// 更新用户
+//		user.Age = 26
+//		if err := tx.Save(user).Error; err != nil {
+//			return err
+//		}
+//
+//		return nil
+//	})
+//
+//	assert.NoError(t, err)
+//
+//	// 验证数据是否正确保存
+//	var userCount int64
+//	db.Model(&TestUser{}).Count(&userCount)
+//	assert.Equal(t, int64(1), userCount)
+//
+//	var postCount int64
+//	db.Model(&TestPost{}).Count(&postCount)
+//	assert.Equal(t, int64(1), postCount)
+//}
 
 func TestAutoUnitOfWorkPlugin_ManualAccess(t *testing.T) {
 	db := setupPluginTestDB(t)

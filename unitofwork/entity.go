@@ -1,16 +1,17 @@
 package unitofwork
 
 import (
+	"github.com/wubin1989/gorm"
 	"time"
 )
 
 // Entity 实体接口，所有参与工作单元的实体都必须实现此接口
 type Entity interface {
 	// GetID 获取实体ID
-	GetID() interface{}
+	GetID() uint
 
 	// SetID 设置实体ID
-	SetID(id interface{})
+	SetID(id uint)
 
 	// GetTableName 获取表名
 	GetTableName() string
@@ -55,10 +56,10 @@ type SoftDelete interface {
 	Entity
 
 	// GetDeletedAt 获取删除时间
-	GetDeletedAt() *time.Time
+	GetDeletedAt() gorm.DeletedAt
 
 	// SetDeletedAt 设置删除时间
-	SetDeletedAt(deletedAt *time.Time)
+	SetDeletedAt(deletedAt gorm.DeletedAt)
 
 	// IsDeleted 判断是否已删除
 	IsDeleted() bool
@@ -74,20 +75,20 @@ type Validatable interface {
 
 // BaseEntity 基础实体结构，可嵌入到业务实体中
 type BaseEntity struct {
-	ID        interface{} `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time   `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time   `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt *time.Time  `gorm:"index" json:"deleted_at,omitempty"`
-	Revision  int64       `gorm:"default:1" json:"revision"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Revision  int64          `gorm:"default:1" json:"revision"`
 }
 
 // GetID 实现Entity接口
-func (b *BaseEntity) GetID() interface{} {
+func (b *BaseEntity) GetID() uint {
 	return b.ID
 }
 
 // SetID 实现Entity接口
-func (b *BaseEntity) SetID(id interface{}) {
+func (b *BaseEntity) SetID(id uint) {
 	b.ID = id
 }
 
@@ -98,7 +99,7 @@ func (b *BaseEntity) GetTableName() string {
 
 // IsNew 实现Entity接口
 func (b *BaseEntity) IsNew() bool {
-	return b.ID == nil
+	return b.ID == 0
 }
 
 // GetRevision 实现HasRevision接口
@@ -137,18 +138,18 @@ func (b *BaseEntity) SetUpdatedAt(updatedAt time.Time) {
 }
 
 // GetDeletedAt 实现SoftDelete接口
-func (b *BaseEntity) GetDeletedAt() *time.Time {
+func (b *BaseEntity) GetDeletedAt() gorm.DeletedAt {
 	return b.DeletedAt
 }
 
 // SetDeletedAt 实现SoftDelete接口
-func (b *BaseEntity) SetDeletedAt(deletedAt *time.Time) {
+func (b *BaseEntity) SetDeletedAt(deletedAt gorm.DeletedAt) {
 	b.DeletedAt = deletedAt
 }
 
 // IsDeleted 实现SoftDelete接口
 func (b *BaseEntity) IsDeleted() bool {
-	return b.DeletedAt != nil
+	return b.DeletedAt.Valid
 }
 
 // Validate 默认验证实现

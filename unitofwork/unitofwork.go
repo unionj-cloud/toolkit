@@ -171,7 +171,7 @@ func (uow *UnitOfWork) RegisterNew(entity Entity) error {
 	uow.newEntities[entityType] = append(uow.newEntities[entityType], entity)
 
 	// 添加操作
-	operation := NewInsertOperation(entity)
+	operation := NewInsertOperation(entity, uow)
 	uow.addOperation(operation)
 
 	if uow.config.EnableDetailLog {
@@ -325,7 +325,6 @@ func (uow *UnitOfWork) Commit() error {
 	})
 
 	if err != nil {
-		uow.isRolledBack = true
 		zlogger.Error().Err(err).Msg("Unit of work commit failed")
 		return fmt.Errorf("unit of work commit failed: %w", err)
 	}
@@ -641,7 +640,7 @@ func (uow *UnitOfWork) removeFromEntityList(entityMap map[reflect.Type][]Entity,
 func (uow *UnitOfWork) removeOperationByEntity(entity Entity) {
 	newOps := make([]Operation, 0, len(uow.operations))
 	for _, op := range uow.operations {
-		if !op.SameIdentity(NewInsertOperation(entity)) &&
+		if !op.SameIdentity(NewInsertOperation(entity, uow)) &&
 			!op.SameIdentity(NewUpdateOperation(entity, nil)) &&
 			!op.SameIdentity(NewDeleteOperation(entity)) {
 			newOps = append(newOps, op)

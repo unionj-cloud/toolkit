@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wubin1989/gorm"
 	"github.com/unionj-cloud/toolkit/zlogger"
+	"github.com/wubin1989/gorm"
 )
 
 // 上下文键
@@ -455,19 +455,19 @@ type entityWrapper struct {
 	typ   reflect.Type
 }
 
-func (w *entityWrapper) GetID() interface{} {
+func (w *entityWrapper) GetID() uint {
 	method := w.value.MethodByName("GetID")
 	if !method.IsValid() {
-		return nil
+		return 0
 	}
 	results := method.Call(nil)
 	if len(results) > 0 {
-		return results[0].Interface()
+		return results[0].Interface().(uint)
 	}
-	return nil
+	return 0
 }
 
-func (w *entityWrapper) SetID(id interface{}) {
+func (w *entityWrapper) SetID(id uint) {
 	method := w.value.MethodByName("SetID")
 	if !method.IsValid() {
 		return
@@ -518,7 +518,7 @@ func (p *AutoUnitOfWorkPlugin) getUowFromContext(ctx context.Context) *UnitOfWor
 	if ctx == nil {
 		return nil
 	}
-	
+
 	uow, _ := ctx.Value(uowContextKey).(*UnitOfWork)
 	return uow
 }

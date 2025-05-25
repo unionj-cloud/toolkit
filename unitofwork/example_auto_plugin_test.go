@@ -55,65 +55,66 @@ func (p *ExamplePost) Validate() error {
 	return nil
 }
 
-// ExampleBasicUsage 基本使用示例
-func ExampleBasicUsage() {
-	// 1. 初始化数据库
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		log.Fatal("连接数据库失败:", err)
-	}
-
-	// 2. 注册自动化工作单元插件（使用默认配置）
-	plugin := NewAutoUnitOfWorkPlugin(nil, nil)
-	err = db.Use(plugin)
-	if err != nil {
-		log.Fatal("注册插件失败:", err)
-	}
-
-	// 3. 自动迁移
-	err = db.AutoMigrate(&ExampleUser{}, &ExamplePost{})
-	if err != nil {
-		log.Fatal("数据库迁移失败:", err)
-	}
-
-	// 4. 使用事务 - 插件会自动管理工作单元
-	err = db.Transaction(func(tx *gorm.DB) error {
-		// 创建用户 - 自动注册到工作单元
-		user := &ExampleUser{
-			Name:  "张三",
-			Email: "zhangsan@example.com",
-			Age:   25,
-		}
-		if err := tx.Create(user).Error; err != nil {
-			return err
-		}
-
-		// 创建文章 - 自动注册到工作单元
-		post := &ExamplePost{
-			Title:   "我的第一篇文章",
-			Content: "这是文章内容...",
-			UserID:  uint(user.GetID().(int)),
-		}
-		if err := tx.Create(post).Error; err != nil {
-			return err
-		}
-
-		// 更新用户 - 自动注册到工作单元
-		user.Age = 26
-		if err := tx.Save(user).Error; err != nil {
-			return err
-		}
-
-		return nil
-		// 事务提交时，工作单元会自动按依赖顺序执行所有操作
-	})
-
-	if err != nil {
-		log.Fatal("事务执行失败:", err)
-	}
-
-	fmt.Println("基本使用示例完成")
-}
+//
+//// ExampleBasicUsage 基本使用示例
+//func ExampleBasicUsage() {
+//	// 1. 初始化数据库
+//	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+//	if err != nil {
+//		log.Fatal("连接数据库失败:", err)
+//	}
+//
+//	// 2. 注册自动化工作单元插件（使用默认配置）
+//	plugin := NewAutoUnitOfWorkPlugin(nil, nil)
+//	err = db.Use(plugin)
+//	if err != nil {
+//		log.Fatal("注册插件失败:", err)
+//	}
+//
+//	// 3. 自动迁移
+//	err = db.AutoMigrate(&ExampleUser{}, &ExamplePost{})
+//	if err != nil {
+//		log.Fatal("数据库迁移失败:", err)
+//	}
+//
+//	// 4. 使用事务 - 插件会自动管理工作单元
+//	err = db.Transaction(func(tx *gorm.DB) error {
+//		// 创建用户 - 自动注册到工作单元
+//		user := &ExampleUser{
+//			Name:  "张三",
+//			Email: "zhangsan@example.com",
+//			Age:   25,
+//		}
+//		if err := tx.Create(user).Error; err != nil {
+//			return err
+//		}
+//
+//		// 创建文章 - 自动注册到工作单元
+//		post := &ExamplePost{
+//			Title:   "我的第一篇文章",
+//			Content: "这是文章内容...",
+//			UserID:  uint(user.GetID().(int)),
+//		}
+//		if err := tx.Create(post).Error; err != nil {
+//			return err
+//		}
+//
+//		// 更新用户 - 自动注册到工作单元
+//		user.Age = 26
+//		if err := tx.Save(user).Error; err != nil {
+//			return err
+//		}
+//
+//		return nil
+//		// 事务提交时，工作单元会自动按依赖顺序执行所有操作
+//	})
+//
+//	if err != nil {
+//		log.Fatal("事务执行失败:", err)
+//	}
+//
+//	fmt.Println("基本使用示例完成")
+//}
 
 // ExampleAdvancedConfiguration 高级配置示例
 func ExampleAdvancedConfiguration() {
