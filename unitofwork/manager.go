@@ -7,18 +7,16 @@ import (
 
 	"github.com/wubin1989/gorm"
 
-	"github.com/unionj-cloud/toolkit/caches"
 	"github.com/unionj-cloud/toolkit/zlogger"
 )
 
 // Manager 工作单元管理器
 type Manager struct {
-	db           *gorm.DB
-	config       *Config
-	cachesPlugin *caches.Caches
-	mu           sync.RWMutex
-	currentUoW   *UnitOfWork
-	contextKey   string
+	db         *gorm.DB
+	config     *Config
+	mu         sync.RWMutex
+	currentUoW *UnitOfWork
+	contextKey string
 }
 
 // NewManager 创建工作单元管理器
@@ -35,12 +33,6 @@ func NewManager(db *gorm.DB, options ...ConfigOption) *Manager {
 	}
 
 	return manager
-}
-
-// WithCaches 配置缓存插件
-func (m *Manager) WithCaches(cachesPlugin *caches.Caches) *Manager {
-	m.cachesPlugin = cachesPlugin
-	return m
 }
 
 // ExecuteInUnitOfWork 在工作单元中执行操作
