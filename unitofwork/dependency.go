@@ -8,7 +8,7 @@ import (
 
 // DependencyManager 实体依赖关系管理器
 type DependencyManager struct {
-	// 依赖图：dependent -> dependencies
+	// 依赖图：dependency -> dependents
 	dependencyGraph map[reflect.Type][]reflect.Type
 	// 实体权重：用于同级实体的排序
 	entityWeights map[reflect.Type]int
@@ -29,16 +29,16 @@ func (dm *DependencyManager) RegisterDependency(dependent, dependency reflect.Ty
 		return // 自依赖，忽略
 	}
 
-	dependencies := dm.dependencyGraph[dependent]
+	dependents := dm.dependencyGraph[dependency]
 
 	// 检查是否已存在
-	for _, dep := range dependencies {
-		if dep == dependency {
+	for _, dep := range dependents {
+		if dep == dependent {
 			return
 		}
 	}
 
-	dm.dependencyGraph[dependent] = append(dependencies, dependency)
+	dm.dependencyGraph[dependency] = append(dependents, dependent)
 }
 
 // RegisterEntityWeight 注册实体权重（用于同级排序）
@@ -155,14 +155,14 @@ func (dm *DependencyManager) calculateInDegree(entityTypes []reflect.Type) map[r
 	}
 
 	// 计算每个节点的入度
-	for dependent, dependencies := range dm.dependencyGraph {
-		if _, exists := inDegree[dependent]; !exists {
+	for dependency, dependents := range dm.dependencyGraph {
+		if _, exists := inDegree[dependency]; !exists {
 			continue // 不在当前处理的实体集合中
 		}
 
-		for _, dependency := range dependencies {
-			if _, exists := inDegree[dependency]; exists {
-				inDegree[dependency]++
+		for _, dep := range dependents {
+			if _, exists := inDegree[dep]; exists {
+				inDegree[dep]++
 			}
 		}
 	}
@@ -173,15 +173,15 @@ func (dm *DependencyManager) calculateInDegree(entityTypes []reflect.Type) map[r
 // getNeighbors 获取邻接节点
 func (dm *DependencyManager) getNeighbors(entityType reflect.Type, reverse bool) []reflect.Type {
 	if !reverse {
-		// 正向：返回当前类型的依赖项
+		// 正向：返回依赖当前类型的项
 		return dm.dependencyGraph[entityType]
 	} else {
-		// 反向：返回依赖当前类型的项
+		// 反向：返回当前类型的依赖项
 		neighbors := make([]reflect.Type, 0)
-		for dependent, dependencies := range dm.dependencyGraph {
-			for _, dependency := range dependencies {
-				if dependency == entityType {
-					neighbors = append(neighbors, dependent)
+		for dependency, dependents := range dm.dependencyGraph {
+			for _, dep := range dependents {
+				if dep == entityType {
+					neighbors = append(neighbors, dependency)
 					break
 				}
 			}
@@ -236,10 +236,10 @@ func DefaultDependencyManager() *DependencyManager {
 func (dm *DependencyManager) GetAllEntityTypes() []reflect.Type {
 	typeSet := make(map[reflect.Type]bool)
 
-	for dependent, dependencies := range dm.dependencyGraph {
-		typeSet[dependent] = true
-		for _, dependency := range dependencies {
-			typeSet[dependency] = true
+	for dependency, dependents := range dm.dependencyGraph {
+		typeSet[dependency] = true
+		for _, dep := range dependents {
+			typeSet[dep] = true
 		}
 	}
 
@@ -253,9 +253,9 @@ func (dm *DependencyManager) GetAllEntityTypes() []reflect.Type {
 
 // HasDependency 检查是否存在依赖关系
 func (dm *DependencyManager) HasDependency(dependent, dependency reflect.Type) bool {
-	dependencies := dm.dependencyGraph[dependent]
-	for _, dep := range dependencies {
-		if dep == dependency {
+	dependents := dm.dependencyGraph[dependency]
+	for _, dep := range dependents {
+		if dep == dependent {
 			return true
 		}
 	}
@@ -264,16 +264,16 @@ func (dm *DependencyManager) HasDependency(dependent, dependency reflect.Type) b
 
 // RemoveDependency 移除依赖关系
 func (dm *DependencyManager) RemoveDependency(dependent, dependency reflect.Type) {
-	dependencies := dm.dependencyGraph[dependent]
-	newDependencies := make([]reflect.Type, 0, len(dependencies))
+	dependents := dm.dependencyGraph[dependency]
+	newDependents := make([]reflect.Type, 0, len(dependents))
 
-	for _, dep := range dependencies {
-		if dep != dependency {
-			newDependencies = append(newDependencies, dep)
+	for _, dep := range dependents {
+		if dep != dependent {
+			newDependents = append(newDependents, dep)
 		}
 	}
 
-	dm.dependencyGraph[dependent] = newDependencies
+	dm.dependencyGraph[dependency] = newDependents
 }
 
 // Clear 清空所有依赖关系

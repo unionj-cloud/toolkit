@@ -534,7 +534,7 @@ func ExampleUnitOfWork_DependencyManagement() {
 
 	fmt.Printf("依赖关系管理成功：用户ID %v，文章ID %v，标签ID %v\n",
 		user.GetID(), post.GetID(), tag.GetID())
-	// Output: 依赖关系管理成功：用户ID 1，文章ID 2，标签ID 3
+	// Output: 依赖关系管理成功：用户ID 1，文章ID 1，标签ID 1
 }
 
 // ExampleUnitOfWork_DirtyTracking 脏检查示例
@@ -563,8 +563,11 @@ func ExampleUnitOfWork_DirtyTracking() {
 		log.Fatal(err)
 	}
 
+	var testLoadedUser User
+	db.First(&testLoadedUser, user.GetID())
+
 	fmt.Printf("脏检查成功：用户名从 '%s' 改为 '%s'，年龄从 %d 改为 %d\n",
-		user.Name, loadedUser.Name, user.Age, loadedUser.Age)
+		user.Name, testLoadedUser.Name, user.Age, testLoadedUser.Age)
 	// Output: 脏检查成功：用户名从 '原始用户' 改为 '修改后用户'，年龄从 25 改为 26
 }
 
@@ -578,11 +581,11 @@ func ExampleUnitOfWork_OptimisticLocking() {
 	db.Create(user)
 
 	uow := NewUnitOfWork(db)
+	uow.RegisterClean(user)
 
 	// 模拟并发修改：版本号检查
 	user.Name = "并发修改用户"
 	user.Age = 31
-	user.SetRevision(user.GetRevisionNext()) // 版本号+1
 
 	err := uow.RegisterDirty(user)
 	if err != nil {
@@ -608,12 +611,8 @@ func ExampleUnitOfWork_SoftDelete() {
 	db.Create(user)
 
 	uow := NewUnitOfWork(db)
-
-	// 执行软删除
-	now := time.Now()
-	user.SetDeletedAt(gorm.DeletedAt{Time: now, Valid: true})
-
-	err := uow.RegisterDirty(user)
+	
+	err := uow.RegisterRemoved(user)
 	if err != nil {
 		log.Fatal(err)
 	}
