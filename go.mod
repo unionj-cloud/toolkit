@@ -52,6 +52,7 @@ require (
 	github.com/wubin1989/gorm v0.0.5
 	github.com/wubin1989/gorm-dameng v0.5.1
 	github.com/wubin1989/mysql v0.0.2
+	github.com/wubin1989/sqlite v0.0.3
 	github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2
 	go.uber.org/mock v0.5.0
 )
