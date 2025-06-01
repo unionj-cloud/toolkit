@@ -139,8 +139,8 @@ func (uow *UnitOfWork) WithContext(ctx context.Context) *UnitOfWork {
 	return uow
 }
 
-// RegisterNew 注册新实体
-func (uow *UnitOfWork) RegisterNew(entity Entity) error {
+// Create 注册新实体
+func (uow *UnitOfWork) Create(entity Entity) error {
 	uow.mu.Lock()
 	defer uow.mu.Unlock()
 
@@ -189,8 +189,8 @@ func (uow *UnitOfWork) RegisterNew(entity Entity) error {
 	return nil
 }
 
-// RegisterDirty 注册脏实体
-func (uow *UnitOfWork) RegisterDirty(entity Entity) error {
+// Update 注册脏实体
+func (uow *UnitOfWork) Update(entity Entity) error {
 	uow.mu.Lock()
 	defer uow.mu.Unlock()
 
@@ -246,8 +246,8 @@ func (uow *UnitOfWork) RegisterDirty(entity Entity) error {
 	return nil
 }
 
-// RegisterRemoved 注册删除实体
-func (uow *UnitOfWork) RegisterRemoved(entity Entity) error {
+// Delete 注册删除实体
+func (uow *UnitOfWork) Delete(entity Entity) error {
 	uow.mu.Lock()
 	defer uow.mu.Unlock()
 
@@ -389,7 +389,7 @@ func (uow *UnitOfWork) executeOperations(tx *gorm.DB) error {
 				Msg("Executing operation")
 		}
 
-		if err := operation.Execute(uow.ctx, tx); err != nil {
+		if err := operation.Execute(tx); err != nil {
 			return fmt.Errorf("operation %d failed: %w", i, err)
 		}
 	}

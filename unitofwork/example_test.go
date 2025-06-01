@@ -109,7 +109,7 @@ func ExampleUnitOfWork_BasicUsage() {
 	}
 
 	// 注册新实体
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal("注册新实体失败:", err)
 	}
@@ -146,7 +146,7 @@ func ExampleUnitOfWork_WithConfiguration() {
 		Age:   30,
 	}
 
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func ExampleUnitOfWork_ComplexOperations() {
 		Email: "wangwu@example.com",
 		Age:   28,
 	}
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func ExampleUnitOfWork_ComplexOperations() {
 		Content: "这是一篇关于Go语言的入门文章...",
 		UserID:  1, // 假设用户ID为1
 	}
-	err = uow.RegisterNew(post1)
+	err = uow.Create(post1)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func ExampleUnitOfWork_ComplexOperations() {
 		Content: "本文介绍单元测试的最佳实践...",
 		UserID:  1,
 	}
-	err = uow.RegisterNew(post2)
+	err = uow.Create(post2)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func ExampleUnitOfWork_ComplexOperations() {
 		Name:  "编程",
 		Color: "#FF5722",
 	}
-	err = uow.RegisterNew(tag)
+	err = uow.Create(tag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -233,21 +233,21 @@ func ExampleUnitOfWork_UpdateAndDelete() {
 
 	// 修改用户信息
 	user.Age = 36
-	err := uow.RegisterDirty(user)
+	err := uow.Update(user)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// 修改文章标题
 	post.Title = "更新后的标题"
-	err = uow.RegisterDirty(post)
+	err = uow.Update(post)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// 创建新标签
 	tag := &Tag{Name: "技术", Color: "#2196F3"}
-	err = uow.RegisterNew(tag)
+	err = uow.Create(tag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func ExampleUnitOfWork_Rollback() {
 		Age:   25,
 	}
 
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestUnitOfWork_BasicOperations(t *testing.T) {
 			Age:   25,
 		}
 
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		err = uow.Commit()
@@ -336,7 +336,7 @@ func TestUnitOfWork_BasicOperations(t *testing.T) {
 		user.Name = "更新后用户"
 		user.Age = 21
 
-		err := uow.RegisterDirty(user)
+		err := uow.Update(user)
 		require.NoError(t, err)
 
 		err = uow.Commit()
@@ -356,7 +356,7 @@ func TestUnitOfWork_BasicOperations(t *testing.T) {
 
 		uow := NewUnitOfWork(db)
 
-		err := uow.RegisterRemoved(user)
+		err := uow.Delete(user)
 		require.NoError(t, err)
 
 		err = uow.Commit()
@@ -383,7 +383,7 @@ func TestUnitOfWork_ValidationAndErrors(t *testing.T) {
 			Age:   25,
 		}
 
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		// 提交应该失败
@@ -401,7 +401,7 @@ func TestUnitOfWork_ValidationAndErrors(t *testing.T) {
 			Age:   25,
 		}
 
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		err = uow.Commit()
@@ -414,7 +414,7 @@ func TestUnitOfWork_ValidationAndErrors(t *testing.T) {
 			Age:   30,
 		}
 
-		err = uow.RegisterNew(newUser)
+		err = uow.Create(newUser)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "already finished")
 	})
@@ -466,13 +466,13 @@ func TestUnitOfWork_Stats(t *testing.T) {
 		ID: 3,
 	}}
 
-	err := uow.RegisterNew(user1)
+	err := uow.Create(user1)
 	require.NoError(t, err)
 
-	err = uow.RegisterNew(user2)
+	err = uow.Create(user2)
 	require.NoError(t, err)
 
-	err = uow.RegisterNew(post)
+	err = uow.Create(post)
 	require.NoError(t, err)
 
 	// 获取统计信息
@@ -517,17 +517,17 @@ func ExampleUnitOfWork_DependencyManagement() {
 	}
 
 	// 注册顺序：先Post，再Tag，最后User
-	err := uow.RegisterNew(post)
+	err := uow.Create(post)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow.RegisterNew(tag)
+	err = uow.Create(tag)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow.RegisterNew(user)
+	err = uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -593,7 +593,7 @@ func ExampleUnitOfWork_OptimisticLocking() {
 	user.Name = "并发修改用户"
 	user.Age = 31
 
-	err := uow.RegisterDirty(user)
+	err := uow.Update(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -618,7 +618,7 @@ func ExampleUnitOfWork_SoftDelete() {
 
 	uow := NewUnitOfWork(db)
 
-	err := uow.RegisterRemoved(user)
+	err := uow.Delete(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -647,7 +647,7 @@ func ExampleUnitOfWork_BatchOperations() {
 			Age:   20 + i%50,
 		}
 
-		err := uow.RegisterNew(users[i])
+		err := uow.Create(users[i])
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -661,7 +661,7 @@ func ExampleUnitOfWork_BatchOperations() {
 			UserID:  uint(1 + i%10), // 分配给前10个用户
 		}
 
-		err := uow.RegisterNew(post)
+		err := uow.Create(post)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -686,12 +686,12 @@ func ExampleUnitOfWork_ErrorRecovery() {
 	validUser := &User{Name: "有效用户", Email: "valid@example.com", Age: 25}
 	invalidUser := &User{Name: "", Email: "invalid@example.com", Age: 30} // 无效：名字为空
 
-	err := uow1.RegisterNew(validUser)
+	err := uow1.Create(validUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow1.RegisterNew(invalidUser)
+	err = uow1.Create(invalidUser)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -715,12 +715,12 @@ func ExampleUnitOfWork_ErrorRecovery() {
 	invalidUser.Name = "修复后用户" // 修复无效数据
 	invalidUser.SetID(0)       // 重置ID
 
-	err = uow2.RegisterNew(validUser)
+	err = uow2.Create(validUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow2.RegisterNew(invalidUser)
+	err = uow2.Create(invalidUser)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -749,15 +749,15 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 		uow.TakeSnapshot(user)
 
 		// 多次修改同一实体
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		user.Age = 26
-		err = uow.RegisterDirty(user)
+		err = uow.Update(user)
 		require.NoError(t, err)
 
 		user.Age = 27
-		err = uow.RegisterDirty(user)
+		err = uow.Update(user)
 		require.NoError(t, err)
 
 		// 提交前获取统计信息
@@ -786,7 +786,7 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 			}
 			user.ID = uint(i + 1)
 
-			err := uow.RegisterNew(user)
+			err := uow.Create(user)
 			if i >= 5 {
 				// 超过限制应该返回错误
 				assert.Error(t, err)
@@ -817,7 +817,7 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 				}
 				user.ID = uint(id + 1)
 
-				err := uow.RegisterNew(user)
+				err := uow.Create(user)
 				if err != nil {
 					errors <- err
 				}
@@ -851,7 +851,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			Age:   28,
 		}
 		author.ID = 1
-		err := uow.RegisterNew(author)
+		err := uow.Create(author)
 		require.NoError(t, err)
 
 		// 创建文章
@@ -861,7 +861,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			UserID:  1, // 假设作者ID为1
 		}
 		post.ID = 1
-		err = uow.RegisterNew(post)
+		err = uow.Create(post)
 		require.NoError(t, err)
 
 		// 创建标签
@@ -873,7 +873,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 
 		for i, tag := range tags {
 			tag.ID = uint(1 + i)
-			err = uow.RegisterNew(tag)
+			err = uow.Create(tag)
 			require.NoError(t, err)
 		}
 
@@ -905,7 +905,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 		loadedUser.Email = "new@example.com"
 		loadedUser.Age = 26
 
-		uow.RegisterDirty(&loadedUser)
+		uow.Update(&loadedUser)
 
 		err := uow.Commit()
 		require.NoError(t, err)
@@ -936,7 +936,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			}
 			user.ID = cast.ToUint(userData["id"])
 
-			err := uow.RegisterNew(user)
+			err := uow.Create(user)
 			require.NoError(t, err)
 		}
 
@@ -969,7 +969,7 @@ func ExampleUnitOfWork_AuditTrail() {
 		Age:   28,
 	}
 
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1023,7 +1023,7 @@ func ExampleUnitOfWork_ComplexQueries() {
 			UserID:  user.GetID(),
 		}
 
-		err := uow.RegisterNew(post)
+		err := uow.Create(post)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -1079,7 +1079,7 @@ func ExampleUnitOfWork_PaginatedOperations() {
 		// 为每页用户更新年龄
 		for i := range users {
 			users[i].Age += 1
-			err := uow.RegisterDirty(&users[i])
+			err := uow.Update(&users[i])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -1123,7 +1123,7 @@ func ExampleUnitOfWork_CallbackHooks() {
 		Age:   30,
 	}
 
-	err := uow.RegisterNew(user)
+	err := uow.Create(user)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1166,7 +1166,7 @@ func TestUnitOfWork_EdgeCases(t *testing.T) {
 		uow := NewUnitOfWork(db)
 
 		user := &User{Name: "测试用户", Email: "test@example.com", Age: 25}
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		// 第一次提交
@@ -1182,7 +1182,7 @@ func TestUnitOfWork_EdgeCases(t *testing.T) {
 		uow := NewUnitOfWork(db)
 
 		user := &User{Name: "测试用户", Email: "test@example.com", Age: 25}
-		err := uow.RegisterNew(user)
+		err := uow.Create(user)
 		require.NoError(t, err)
 
 		// 第一次回滚
@@ -1198,13 +1198,13 @@ func TestUnitOfWork_EdgeCases(t *testing.T) {
 		uow := NewUnitOfWork(db)
 
 		// 注册nil实体应该失败
-		err := uow.RegisterNew(nil)
+		err := uow.Create(nil)
 		assert.Error(t, err)
 
-		err = uow.RegisterDirty(nil)
+		err = uow.Update(nil)
 		assert.Error(t, err)
 
-		err = uow.RegisterRemoved(nil)
+		err = uow.Delete(nil)
 		assert.Error(t, err)
 	})
 
@@ -1223,7 +1223,7 @@ func TestUnitOfWork_EdgeCases(t *testing.T) {
 			UserID:  1,
 		}
 
-		err := uow.RegisterNew(post)
+		err := uow.Create(post)
 		require.NoError(t, err)
 
 		err = uow.Commit()
@@ -1251,7 +1251,7 @@ func TestUnitOfWork_MemoryManagement(t *testing.T) {
 			}
 			user.ID = uint(i + 1)
 
-			err := uow.RegisterNew(user)
+			err := uow.Create(user)
 			require.NoError(t, err)
 		}
 
@@ -1273,7 +1273,7 @@ func TestUnitOfWork_DatabaseConstraints(t *testing.T) {
 
 		// 尝试创建相同邮箱的用户
 		user2 := &User{Name: "用户2", Email: "unique@example.com", Age: 30}
-		err := uow.RegisterNew(user2)
+		err := uow.Create(user2)
 		require.NoError(t, err)
 
 		// 提交时应该失败（邮箱唯一约束）
@@ -1291,7 +1291,7 @@ func TestUnitOfWork_DatabaseConstraints(t *testing.T) {
 			UserID:  999999, // 不存在的用户ID
 		}
 
-		err := uow.RegisterNew(post)
+		err := uow.Create(post)
 		require.NoError(t, err)
 
 		// 根据数据库配置，可能会失败或成功（取决于外键约束设置）
@@ -1310,7 +1310,7 @@ func TestUnitOfWork_DatabaseConstraints(t *testing.T) {
 			UserID:  1,
 		}
 
-		err := uow.RegisterNew(post)
+		err := uow.Create(post)
 		require.NoError(t, err)
 
 		// 验证失败应该在实体验证阶段就被捕获
@@ -1335,7 +1335,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			Age:   28,
 		}
 		user.ID = 1
-		err := uow1.RegisterNew(user)
+		err := uow1.Create(user)
 		require.NoError(t, err)
 		err = uow1.Commit()
 		require.NoError(t, err)
@@ -1348,7 +1348,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			UserID:  cast.ToUint(user.GetID()),
 		}
 		post.ID = 1
-		err = uow2.RegisterNew(post)
+		err = uow2.Create(post)
 		require.NoError(t, err)
 		err = uow2.Commit()
 		require.NoError(t, err)
@@ -1360,7 +1360,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		uow3.TakeSnapshot(&loadedPost)
 		loadedPost.Title = "我的第一篇文章（已编辑）"
 		loadedPost.Content += "\n\n[编辑] 添加了一些新内容"
-		err = uow3.RegisterDirty(&loadedPost)
+		err = uow3.Update(&loadedPost)
 		require.NoError(t, err)
 		err = uow3.Commit()
 		require.NoError(t, err)
@@ -1372,7 +1372,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			Color: "#FF9800",
 		}
 		tag.ID = 1
-		err = uow4.RegisterNew(tag)
+		err = uow4.Create(tag)
 		require.NoError(t, err)
 		err = uow4.Commit()
 		require.NoError(t, err)
