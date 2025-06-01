@@ -57,6 +57,7 @@ type Config struct {
 	EnableOperationMerge bool
 
 	// 最大实体数量（内存保护）
+	// 零值表示无限制
 	MaxEntityCount int
 
 	// 是否启用详细日志
@@ -69,7 +70,7 @@ func DefaultConfig() *Config {
 		EnableDirtyCheck:     true,
 		BatchSize:            1000,
 		EnableOperationMerge: true,
-		MaxEntityCount:       10000,
+		MaxEntityCount:       0,
 		EnableDetailLog:      false,
 	}
 }
@@ -641,6 +642,9 @@ func (uow *UnitOfWork) addOperation(operation Operation) {
 }
 
 func (uow *UnitOfWork) checkMemoryLimit() error {
+	if uow.config.MaxEntityCount <= 0 {
+		return nil
+	}
 	totalCount := uow.getTotalEntityCount()
 	if totalCount >= uow.config.MaxEntityCount {
 		return fmt.Errorf("entity count limit exceeded: %d >= %d", totalCount, uow.config.MaxEntityCount)

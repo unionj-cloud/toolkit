@@ -1,7 +1,6 @@
 package unitofwork
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -18,7 +17,7 @@ type Operation interface {
 	GetOperationType() OperationType
 
 	// Execute 执行操作
-	Execute(ctx context.Context, db *gorm.DB) error
+	Execute(db *gorm.DB) error
 
 	// GetEntity 获取操作的实体（如果有）
 	GetEntity() Entity
@@ -90,7 +89,7 @@ func (op *InsertOperation) GetOperationType() OperationType {
 }
 
 // Execute 实现Operation接口
-func (op *InsertOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *InsertOperation) Execute(db *gorm.DB) error {
 	// 验证实体
 	if validatable, ok := op.entity.(Validatable); ok {
 		if err := validatable.Validate(); err != nil {
@@ -106,7 +105,7 @@ func (op *InsertOperation) Execute(ctx context.Context, db *gorm.DB) error {
 	}
 
 	// 执行插入
-	result := db.WithContext(ctx).Create(op.entity)
+	result := db.Create(op.entity)
 	if result.Error != nil {
 		return fmt.Errorf("failed to insert entity %T: %w", op.entity, result.Error)
 	}
@@ -175,7 +174,7 @@ func (op *UpdateOperation) GetOperationType() OperationType {
 }
 
 // Execute 实现Operation接口
-func (op *UpdateOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *UpdateOperation) Execute(db *gorm.DB) error {
 	// 验证实体
 	if validatable, ok := op.entity.(Validatable); ok {
 		if err := validatable.Validate(); err != nil {
@@ -193,9 +192,7 @@ func (op *UpdateOperation) Execute(ctx context.Context, db *gorm.DB) error {
 		originalRevision := revisioned.GetRevision()
 		revisioned.SetRevision(revisioned.GetRevisionNext())
 
-		result := db.WithContext(ctx).
-			Where("id = ? AND revision = ?", op.entity.GetID(), originalRevision).
-			Updates(op.entity)
+		result := db.Where("id = ? AND revision = ?", op.entity.GetID(), originalRevision).Updates(op.entity)
 
 		if result.Error != nil {
 			return fmt.Errorf("failed to update entity %T: %w", op.entity, result.Error)
@@ -205,7 +202,7 @@ func (op *UpdateOperation) Execute(ctx context.Context, db *gorm.DB) error {
 			return fmt.Errorf("optimistic lock failed for entity %T with id %v", op.entity, op.entity.GetID())
 		}
 	} else {
-		result := db.WithContext(ctx).Save(op.entity)
+		result := db.Save(op.entity)
 		if result.Error != nil {
 			return fmt.Errorf("failed to update entity %T: %w", op.entity, result.Error)
 		}
@@ -278,7 +275,7 @@ func (op *DeleteOperation) GetOperationType() OperationType {
 }
 
 // Execute 实现Operation接口
-func (op *DeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *DeleteOperation) Execute(db *gorm.DB) error {
 	// 软删除处理
 	if softDeletable, ok := op.entity.(SoftDelete); ok {
 		now := time.Now()
@@ -292,13 +289,13 @@ func (op *DeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
 			timestamped.SetUpdatedAt(now)
 		}
 
-		result := db.WithContext(ctx).Save(op.entity)
+		result := db.Save(op.entity)
 		if result.Error != nil {
 			return fmt.Errorf("failed to soft delete entity %T: %w", op.entity, result.Error)
 		}
 	} else {
 		// 硬删除
-		result := db.WithContext(ctx).Unscoped().Delete(op.entity)
+		result := db.Unscoped().Delete(op.entity)
 		if result.Error != nil {
 			return fmt.Errorf("failed to delete entity %T: %w", op.entity, result.Error)
 		}
@@ -394,7 +391,7 @@ func ConvertToTypedSlice(input []Entity, elemType reflect.Type) interface{} {
 }
 
 // Execute 实现Operation接口
-func (op *BulkInsertOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *BulkInsertOperation) Execute(db *gorm.DB) error {
 	if len(op.entities) == 0 {
 		return nil
 	}
@@ -417,7 +414,7 @@ func (op *BulkInsertOperation) Execute(ctx context.Context, db *gorm.DB) error {
 
 	// 批量插入
 	typedSlice := ConvertToTypedSlice(op.entities, op.GetEntityType())
-	result := db.WithContext(ctx).CreateInBatches(typedSlice, op.insertOperation.uow.config.BatchSize)
+	result := db.CreateInBatches(typedSlice, op.insertOperation.uow.config.BatchSize)
 	if result.Error != nil {
 		return fmt.Errorf("failed to bulk insert entities %T: %w", op.entityType, result.Error)
 	}
@@ -498,7 +495,7 @@ func (op *BulkUpdateOperation) GetOperationType() OperationType {
 }
 
 // Execute 实现Operation接口
-func (op *BulkUpdateOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *BulkUpdateOperation) Execute(db *gorm.DB) error {
 	if len(op.entities) == 0 {
 		return nil
 	}
@@ -506,7 +503,7 @@ func (op *BulkUpdateOperation) Execute(ctx context.Context, db *gorm.DB) error {
 	// 逐个更新（保持乐观锁特性）
 	for _, entity := range op.entities {
 		updateOp := NewUpdateOperation(entity, nil)
-		if err := updateOp.Execute(ctx, db); err != nil {
+		if err := updateOp.Execute(db); err != nil {
 			return err
 		}
 	}
@@ -587,7 +584,7 @@ func (op *BulkDeleteOperation) GetOperationType() OperationType {
 }
 
 // Execute 实现Operation接口
-func (op *BulkDeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
+func (op *BulkDeleteOperation) Execute(db *gorm.DB) error {
 	if len(op.entities) == 0 {
 		return nil
 	}
@@ -602,13 +599,13 @@ func (op *BulkDeleteOperation) Execute(ctx context.Context, db *gorm.DB) error {
 		// 软删除：逐个处理
 		for _, entity := range op.entities {
 			deleteOp := NewDeleteOperation(entity)
-			if err := deleteOp.Execute(ctx, db); err != nil {
+			if err := deleteOp.Execute(db); err != nil {
 				return err
 			}
 		}
 	} else {
 		// 硬删除：可以批量处理
-		result := db.WithContext(ctx).Delete(op.entities)
+		result := db.Delete(op.entities)
 		if result.Error != nil {
 			return fmt.Errorf("failed to bulk delete entities %T: %w", op.entityType, result.Error)
 		}
