@@ -12,11 +12,10 @@ import (
 )
 
 // 上下文键
-type contextKey int
+type contextKey string
 
 const (
-	uowContextKey contextKey = iota
-	uowConfigContextKey
+	uowContextKey contextKey = "auto_uow"
 )
 
 // AutoUnitOfWorkPlugin 自动化工作单元插件
@@ -48,9 +47,6 @@ type AutoUowConfig struct {
 
 	// 排除的表名（不参与工作单元管理）
 	ExcludedTables []string
-
-	// 自定义上下文键名
-	ContextKey string
 }
 
 // DefaultAutoUowConfig 默认自动化工作单元配置
@@ -62,7 +58,6 @@ func DefaultAutoUowConfig() *AutoUowConfig {
 		SkipReadOnly:     true,
 		VerboseLog:       false,
 		ExcludedTables:   []string{},
-		ContextKey:       "auto_uow",
 	}
 }
 
@@ -181,7 +176,7 @@ func (p *AutoUnitOfWorkPlugin) onQueryAfter(db *gorm.DB) {
 		entities := p.extractEntitiesFromDest(db.Statement.Dest)
 		for _, entity := range entities {
 			if entity != nil && !entity.IsNew() {
-				uow.RegisterClean(entity)
+				uow.TakeSnapshot(entity)
 				if p.config.VerboseLog {
 					zlogger.Debug().
 						Str("entity_type", reflect.TypeOf(entity).String()).

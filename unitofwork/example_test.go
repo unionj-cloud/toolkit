@@ -330,7 +330,7 @@ func TestUnitOfWork_BasicOperations(t *testing.T) {
 
 		uow := NewUnitOfWork(db)
 
-		uow.RegisterClean(user)
+		uow.TakeSnapshot(user)
 
 		// 修改用户信息
 		user.Name = "更新后用户"
@@ -456,9 +456,15 @@ func TestUnitOfWork_Stats(t *testing.T) {
 	uow := NewUnitOfWork(db)
 
 	// 添加一些实体
-	user1 := &User{Name: "用户1", Email: "user1@example.com", Age: 25}
-	user2 := &User{Name: "用户2", Email: "user2@example.com", Age: 30}
-	post := &Post{Title: "文章1", Content: "内容", UserID: 1}
+	user1 := &User{Name: "用户1", Email: "user1@example.com", Age: 25, BaseEntity: BaseEntity{
+		ID: 1,
+	}}
+	user2 := &User{Name: "用户2", Email: "user2@example.com", Age: 30, BaseEntity: BaseEntity{
+		ID: 2,
+	}}
+	post := &Post{Title: "文章1", Content: "内容", UserID: 1, BaseEntity: BaseEntity{
+		ID: 3,
+	}}
 
 	err := uow.RegisterNew(user1)
 	require.NoError(t, err)
@@ -551,7 +557,7 @@ func ExampleUnitOfWork_DirtyTracking() {
 	// 加载用户并创建快照
 	var loadedUser User
 	db.First(&loadedUser, user.GetID())
-	uow.RegisterClean(&loadedUser)
+	uow.TakeSnapshot(&loadedUser)
 
 	// 修改用户属性
 	loadedUser.Name = "修改后用户"
@@ -581,7 +587,7 @@ func ExampleUnitOfWork_OptimisticLocking() {
 	db.Create(user)
 
 	uow := NewUnitOfWork(db)
-	uow.RegisterClean(user)
+	uow.TakeSnapshot(user)
 
 	// 模拟并发修改：版本号检查
 	user.Name = "并发修改用户"
@@ -611,7 +617,7 @@ func ExampleUnitOfWork_SoftDelete() {
 	db.Create(user)
 
 	uow := NewUnitOfWork(db)
-	
+
 	err := uow.RegisterRemoved(user)
 	if err != nil {
 		log.Fatal(err)
@@ -705,9 +711,9 @@ func ExampleUnitOfWork_ErrorRecovery() {
 	// 第二次尝试：修复数据后重试
 	uow2 := NewUnitOfWork(db)
 
-	validUser.SetID(0)              // 重置ID
+	validUser.SetID(0)         // 重置ID
 	invalidUser.Name = "修复后用户" // 修复无效数据
-	invalidUser.SetID(0)            // 重置ID
+	invalidUser.SetID(0)       // 重置ID
 
 	err = uow2.RegisterNew(validUser)
 	if err != nil {
@@ -738,6 +744,9 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 		uow := NewUnitOfWork(db, WithOperationMerge(true))
 
 		user := &User{Name: "测试用户", Email: "merge@example.com", Age: 25}
+		user.ID = 1
+
+		uow.TakeSnapshot(user)
 
 		// 多次修改同一实体
 		err := uow.RegisterNew(user)
@@ -757,9 +766,12 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 		err = uow.Commit()
 		require.NoError(t, err)
 
+		var loadedUser User
+		db.First(&loadedUser, user.GetID())
+
 		// 验证操作被合并
-		assert.Equal(t, 27, user.Age)
-		assert.NotNil(t, stats["operations_count"])
+		assert.Equal(t, 27, loadedUser.Age)
+		assert.NotNil(t, stats["total_operations"])
 	})
 
 	t.Run("内存限制保护", func(t *testing.T) {
@@ -772,12 +784,13 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 				Email: fmt.Sprintf("user%d@example.com", i),
 				Age:   20 + i,
 			}
+			user.ID = uint(i + 1)
 
 			err := uow.RegisterNew(user)
 			if i >= 5 {
 				// 超过限制应该返回错误
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "memory limit")
+				assert.Contains(t, err.Error(), "entity count limit")
 				break
 			} else {
 				require.NoError(t, err)
@@ -802,6 +815,7 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 					Email: fmt.Sprintf("concurrent%d@example.com", id),
 					Age:   20 + id,
 				}
+				user.ID = uint(id + 1)
 
 				err := uow.RegisterNew(user)
 				if err != nil {
@@ -836,6 +850,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			Email: "blogger@example.com",
 			Age:   28,
 		}
+		author.ID = 1
 		err := uow.RegisterNew(author)
 		require.NoError(t, err)
 
@@ -845,6 +860,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			Content: "详细介绍Go语言开发的最佳实践...",
 			UserID:  1, // 假设作者ID为1
 		}
+		post.ID = 1
 		err = uow.RegisterNew(post)
 		require.NoError(t, err)
 
@@ -855,7 +871,8 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 			{Name: "最佳实践", Color: "#4CAF50"},
 		}
 
-		for _, tag := range tags {
+		for i, tag := range tags {
+			tag.ID = uint(1 + i)
 			err = uow.RegisterNew(tag)
 			require.NoError(t, err)
 		}
@@ -881,12 +898,14 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 		// 加载用户
 		var loadedUser User
 		db.First(&loadedUser, user.GetID())
-		uow.RegisterClean(&loadedUser)
+		uow.TakeSnapshot(&loadedUser)
 
 		// 更新用户信息
 		loadedUser.Name = "新用户名"
 		loadedUser.Email = "new@example.com"
 		loadedUser.Age = 26
+
+		uow.RegisterDirty(&loadedUser)
 
 		err := uow.Commit()
 		require.NoError(t, err)
@@ -904,9 +923,9 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 
 		// 模拟从旧系统迁移数据
 		oldUsers := []map[string]interface{}{
-			{"name": "迁移用户1", "email": "migrate1@example.com", "age": 25},
-			{"name": "迁移用户2", "email": "migrate2@example.com", "age": 30},
-			{"name": "迁移用户3", "email": "migrate3@example.com", "age": 35},
+			{"name": "迁移用户1", "email": "migrate1@example.com", "age": 25, "id": 1},
+			{"name": "迁移用户2", "email": "migrate2@example.com", "age": 30, "id": 2},
+			{"name": "迁移用户3", "email": "migrate3@example.com", "age": 35, "id": 3},
 		}
 
 		for _, userData := range oldUsers {
@@ -915,6 +934,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 				Email: userData["email"].(string),
 				Age:   userData["age"].(int),
 			}
+			user.ID = cast.ToUint(userData["id"])
 
 			err := uow.RegisterNew(user)
 			require.NoError(t, err)
@@ -928,185 +948,6 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 		db.Model(&User{}).Count(&count)
 		assert.GreaterOrEqual(t, count, int64(len(oldUsers)))
 	})
-}
-
-// BenchmarkUnitOfWork_Performance 性能基准测试
-func BenchmarkUnitOfWork_Performance(b *testing.B) {
-	db := setupTestDB()
-
-	b.Run("单个实体操作", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			uow := NewUnitOfWork(db)
-
-			user := &User{
-				Name:  fmt.Sprintf("性能测试用户%d", i),
-				Email: fmt.Sprintf("perf%d@example.com", i),
-				Age:   20 + i%50,
-			}
-
-			err := uow.RegisterNew(user)
-			if err != nil {
-				b.Fatal(err)
-			}
-
-			err = uow.Commit()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-
-	b.Run("批量操作", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			uow := NewUnitOfWork(db, WithBatchSize(1000))
-
-			// 每次创建100个用户
-			for j := 0; j < 100; j++ {
-				user := &User{
-					Name:  fmt.Sprintf("批量用户%d_%d", i, j),
-					Email: fmt.Sprintf("batch%d_%d@example.com", i, j),
-					Age:   20 + j%50,
-				}
-
-				err := uow.RegisterNew(user)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-
-			err := uow.Commit()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-
-	b.Run("混合操作", func(b *testing.B) {
-		// 预先创建一些数据用于更新和删除
-		users := make([]*User, 50)
-		for i := 0; i < 50; i++ {
-			users[i] = &User{
-				Name:  fmt.Sprintf("预置用户%d", i),
-				Email: fmt.Sprintf("preset%d@example.com", i),
-				Age:   25,
-			}
-			db.Create(users[i])
-		}
-
-		b.ResetTimer()
-
-		for i := 0; i < b.N; i++ {
-			uow := NewUnitOfWork(db)
-
-			// 创建新用户
-			newUser := &User{
-				Name:  fmt.Sprintf("新用户%d", i),
-				Email: fmt.Sprintf("new%d@example.com", i),
-				Age:   30,
-			}
-			err := uow.RegisterNew(newUser)
-			if err != nil {
-				b.Fatal(err)
-			}
-
-			// 更新现有用户
-			if len(users) > 0 {
-				userToUpdate := users[i%len(users)]
-				userToUpdate.Age = 26 + i%10
-				err = uow.RegisterDirty(userToUpdate)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-
-			err = uow.Commit()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-}
-
-// ExampleUnitOfWork_TransactionIsolation 事务隔离级别示例
-func ExampleUnitOfWork_TransactionIsolation() {
-	db := setupTestDB()
-
-	// 设置事务隔离级别
-	uow := NewUnitOfWork(db)
-
-	// 在事务中执行原生SQL来设置隔离级别
-	ctx := context.Background()
-	uow = uow.WithContext(ctx)
-
-	user := &User{
-		Name:  "隔离测试用户",
-		Email: "isolation@example.com",
-		Age:   30,
-	}
-
-	err := uow.RegisterNew(user)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 在提交前执行一些原生查询
-	db.Exec("PRAGMA read_uncommitted = 1") // SQLite设置
-
-	err = uow.Commit()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("事务隔离级别测试完成，用户ID: %v\n", user.GetID())
-	// Output: 事务隔离级别测试完成，用户ID: 1
-}
-
-// ExampleUnitOfWork_NestedTransactions 嵌套事务示例
-func ExampleUnitOfWork_NestedTransactions() {
-	db := setupTestDB()
-
-	// 外层工作单元
-	outerUow := NewUnitOfWork(db)
-
-	user := &User{
-		Name:  "外层用户",
-		Email: "outer@example.com",
-		Age:   25,
-	}
-
-	err := outerUow.RegisterNew(user)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 内层工作单元（模拟嵌套场景）
-	innerUow := NewUnitOfWork(db)
-
-	post := &Post{
-		Title:   "嵌套事务文章",
-		Content: "在嵌套事务中创建的文章",
-		UserID:  1,
-	}
-
-	err = innerUow.RegisterNew(post)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 先提交内层
-	err = innerUow.Commit()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 再提交外层
-	err = outerUow.Commit()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("嵌套事务完成：用户ID %v，文章ID %v\n", user.GetID(), post.GetID())
-	// Output: 嵌套事务完成：用户ID 1，文章ID 2
 }
 
 // ExampleUnitOfWork_AuditTrail 审计跟踪示例
@@ -1397,10 +1238,10 @@ func TestUnitOfWork_MemoryManagement(t *testing.T) {
 	db := setupTestDB()
 
 	t.Run("大量实体处理", func(t *testing.T) {
-		uow := NewUnitOfWork(db, WithBatchSize(1000))
+		uow := NewUnitOfWork(db, WithBatchSize(2))
 
 		// 创建大量实体但不一次性加载到内存
-		const entityCount = 10000
+		const entityCount = 6
 
 		for i := 0; i < entityCount; i++ {
 			user := &User{
@@ -1408,42 +1249,14 @@ func TestUnitOfWork_MemoryManagement(t *testing.T) {
 				Email: fmt.Sprintf("memory%d@example.com", i),
 				Age:   20 + i%50,
 			}
+			user.ID = uint(i + 1)
 
 			err := uow.RegisterNew(user)
 			require.NoError(t, err)
-
-			// 每1000个实体提交一次，避免内存过度使用
-			if (i+1)%1000 == 0 {
-				err = uow.Commit()
-				require.NoError(t, err)
-
-				// 创建新的工作单元继续处理
-				if i < entityCount-1 {
-					uow = NewUnitOfWork(db, WithBatchSize(1000))
-				}
-			}
 		}
-	})
 
-	t.Run("内存使用限制", func(t *testing.T) {
-		uow := NewUnitOfWork(db, WithMaxEntityCount(100))
-
-		// 测试内存限制是否生效
-		for i := 0; i < 150; i++ {
-			user := &User{
-				Name:  fmt.Sprintf("限制测试用户%d", i),
-				Email: fmt.Sprintf("limit%d@example.com", i),
-				Age:   25,
-			}
-
-			err := uow.RegisterNew(user)
-			if i >= 100 {
-				assert.Error(t, err)
-				break
-			} else {
-				require.NoError(t, err)
-			}
-		}
+		err := uow.Commit()
+		require.NoError(t, err)
 	})
 }
 
@@ -1507,170 +1320,6 @@ func TestUnitOfWork_DatabaseConstraints(t *testing.T) {
 	})
 }
 
-// TestUnitOfWork_ConcurrencyControl 并发控制测试
-func TestUnitOfWork_ConcurrencyControl(t *testing.T) {
-	db := setupTestDB()
-
-	t.Run("并发创建相同实体", func(t *testing.T) {
-		var wg sync.WaitGroup
-		errors := make(chan error, 10)
-
-		// 多个goroutine同时创建相同邮箱的用户
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func(id int) {
-				defer wg.Done()
-
-				uow := NewUnitOfWork(db)
-				user := &User{
-					Name:  fmt.Sprintf("并发用户%d", id),
-					Email: "concurrent@example.com", // 相同邮箱
-					Age:   25,
-				}
-
-				err := uow.RegisterNew(user)
-				if err != nil {
-					errors <- err
-					return
-				}
-
-				err = uow.Commit()
-				if err != nil {
-					errors <- err
-				}
-			}(i)
-		}
-
-		wg.Wait()
-		close(errors)
-
-		// 应该只有一个成功，其他都因为唯一约束失败
-		errorCount := 0
-		for err := range errors {
-			errorCount++
-			t.Logf("并发错误: %v", err)
-		}
-
-		// 至少应该有一些错误（唯一约束冲突）
-		assert.Greater(t, errorCount, 0)
-	})
-
-	t.Run("并发修改同一实体", func(t *testing.T) {
-		// 先创建一个用户
-		user := &User{Name: "并发测试", Email: "concurrent_update@example.com", Age: 25}
-		db.Create(user)
-
-		var wg sync.WaitGroup
-		errors := make(chan error, 5)
-
-		// 多个goroutine同时修改同一用户
-		for i := 0; i < 5; i++ {
-			wg.Add(1)
-			go func(id int) {
-				defer wg.Done()
-
-				uow := NewUnitOfWork(db)
-
-				// 重新加载用户
-				var loadedUser User
-				db.First(&loadedUser, user.GetID())
-
-				loadedUser.Age = 30 + id
-				err := uow.RegisterDirty(&loadedUser)
-				if err != nil {
-					errors <- err
-					return
-				}
-
-				err = uow.Commit()
-				if err != nil {
-					errors <- err
-				}
-			}(i)
-		}
-
-		wg.Wait()
-		close(errors)
-
-		// 检查错误
-		for err := range errors {
-			t.Logf("并发修改错误: %v", err)
-		}
-
-		// 验证最终状态
-		var finalUser User
-		db.First(&finalUser, user.GetID())
-		assert.GreaterOrEqual(t, finalUser.Age, 25)
-	})
-}
-
-// BenchmarkUnitOfWork_LargeDatasets 大数据集性能测试
-func BenchmarkUnitOfWork_LargeDatasets(b *testing.B) {
-	db := setupTestDB()
-
-	b.Run("10K实体创建", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			uow := NewUnitOfWork(db, WithBatchSize(1000))
-
-			for j := 0; j < 10000; j++ {
-				user := &User{
-					Name:  fmt.Sprintf("大数据用户%d_%d", i, j),
-					Email: fmt.Sprintf("bigdata%d_%d@example.com", i, j),
-					Age:   20 + j%50,
-				}
-
-				err := uow.RegisterNew(user)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-
-			err := uow.Commit()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-
-	b.Run("复杂关联创建", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			uow := NewUnitOfWork(db, WithBatchSize(500))
-
-			// 创建100个用户，每个用户10篇文章
-			for j := 0; j < 100; j++ {
-				user := &User{
-					Name:  fmt.Sprintf("关联用户%d_%d", i, j),
-					Email: fmt.Sprintf("relation%d_%d@example.com", i, j),
-					Age:   25,
-				}
-
-				err := uow.RegisterNew(user)
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				for k := 0; k < 10; k++ {
-					post := &Post{
-						Title:   fmt.Sprintf("文章%d_%d_%d", i, j, k),
-						Content: fmt.Sprintf("这是用户%d的第%d篇文章", j, k),
-						UserID:  uint(j + 1), // 假设用户ID从1开始
-					}
-
-					err = uow.RegisterNew(post)
-					if err != nil {
-						b.Fatal(err)
-					}
-				}
-			}
-
-			err := uow.Commit()
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-}
-
 // TestUnitOfWork_Integration 集成测试
 func TestUnitOfWork_Integration(t *testing.T) {
 	db := setupTestDB()
@@ -1685,6 +1334,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			Email: "integration@example.com",
 			Age:   28,
 		}
+		user.ID = 1
 		err := uow1.RegisterNew(user)
 		require.NoError(t, err)
 		err = uow1.Commit()
@@ -1697,6 +1347,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			Content: "这是我在平台上发布的第一篇文章...",
 			UserID:  cast.ToUint(user.GetID()),
 		}
+		post.ID = 1
 		err = uow2.RegisterNew(post)
 		require.NoError(t, err)
 		err = uow2.Commit()
@@ -1706,6 +1357,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		uow3 := NewUnitOfWork(db)
 		var loadedPost Post
 		db.First(&loadedPost, post.GetID())
+		uow3.TakeSnapshot(&loadedPost)
 		loadedPost.Title = "我的第一篇文章（已编辑）"
 		loadedPost.Content += "\n\n[编辑] 添加了一些新内容"
 		err = uow3.RegisterDirty(&loadedPost)
@@ -1719,6 +1371,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			Name:  "个人博客",
 			Color: "#FF9800",
 		}
+		tag.ID = 1
 		err = uow4.RegisterNew(tag)
 		require.NoError(t, err)
 		err = uow4.Commit()

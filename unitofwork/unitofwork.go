@@ -21,7 +21,6 @@ type UnitOfWork struct {
 	newEntities     map[reflect.Type][]Entity
 	dirtyEntities   map[reflect.Type][]Entity
 	removedEntities map[reflect.Type][]Entity
-	cleanEntities   map[reflect.Type][]Entity
 
 	// 快照管理器
 	snapshotManager *SnapshotManager
@@ -87,7 +86,6 @@ func NewUnitOfWork(db *gorm.DB, options ...ConfigOption) *UnitOfWork {
 		newEntities:       make(map[reflect.Type][]Entity),
 		dirtyEntities:     make(map[reflect.Type][]Entity),
 		removedEntities:   make(map[reflect.Type][]Entity),
-		cleanEntities:     make(map[reflect.Type][]Entity),
 		snapshotManager:   NewSnapshotManager(),
 		dependencyManager: DefaultDependencyManager(),
 		operations:        make([]Operation, 0),
@@ -295,44 +293,8 @@ func (uow *UnitOfWork) RegisterRemoved(entity Entity) error {
 	return nil
 }
 
-// RegisterClean 注册干净实体（用于脏检查）
-func (uow *UnitOfWork) RegisterClean(entity Entity) error {
-	if !uow.config.EnableDirtyCheck {
-		return nil
-	}
-
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-
-	if uow.isCommitted || uow.isRolledBack {
-		return fmt.Errorf("unit of work is already finished")
-	}
-
-	if uow.containsEntity(uow.newEntities, entity) {
-		return nil
-	}
-
-	// 检查是否已经标记为删除
-	if uow.containsEntity(uow.removedEntities, entity) {
-		return nil
-	}
-
-	// 检查是否已经标记为脏
-	if uow.containsEntity(uow.dirtyEntities, entity) {
-		return nil
-	}
-
-	if uow.containsEntity(uow.cleanEntities, entity) {
-		return nil
-	}
-
+func (uow *UnitOfWork) TakeSnapshot(entity Entity) {
 	uow.snapshotManager.TakeSnapshot(entity)
-
-	entityType := reflect.TypeOf(entity)
-
-	uow.cleanEntities[entityType] = append(uow.cleanEntities[entityType], entity)
-
-	return nil
 }
 
 // Commit 提交所有变更
@@ -407,13 +369,6 @@ func (uow *UnitOfWork) Rollback() error {
 
 // executeOperations 执行所有操作
 func (uow *UnitOfWork) executeOperations(tx *gorm.DB) error {
-	// 自动脏检查
-	if uow.config.EnableDirtyCheck {
-		if err := uow.detectDirtyEntities(); err != nil {
-			return err
-		}
-	}
-
 	// 操作优化
 	optimizedOps := uow.optimizeOperations()
 
@@ -437,156 +392,6 @@ func (uow *UnitOfWork) executeOperations(tx *gorm.DB) error {
 			return fmt.Errorf("operation %d failed: %w", i, err)
 		}
 	}
-
-	return nil
-}
-
-// detectDirtyEntities 自动检测脏实体
-func (uow *UnitOfWork) detectDirtyEntities() error {
-	if !uow.config.EnableDirtyCheck {
-		return nil // 脏检查未启用，直接返回
-	}
-
-	if uow.config.EnableDetailLog {
-		zlogger.Debug().Msg("Starting automatic dirty entity detection")
-	}
-
-	// 获取快照管理器中的所有快照
-	snapshots := uow.snapshotManager.snapshots
-	detectedCount := 0
-
-	// 遍历所有快照，检查对应的实体是否发生了变更
-	for key, snapshot := range snapshots {
-		// 尝试从已知的实体集合中找到对应的实体
-		entity := uow.findEntityBySnapshot(snapshot)
-		if entity == nil {
-			// 实体不在当前工作单元的管理范围内，跳过
-			continue
-		}
-
-		// 检查实体是否已经被标记为脏或删除
-		if uow.isEntityAlreadyTracked(entity) {
-			continue
-		}
-
-		// 使用快照检查实体是否发生变更
-		if snapshot.IsDirty(entity) {
-			// 获取变更的字段
-			changes := snapshot.GetChangedFields(entity)
-
-			// 注册为脏实体
-			err := uow.registerDirtyEntityInternal(entity, changes)
-			if err != nil {
-				zlogger.Error().
-					Err(err).
-					Str("entity_type", reflect.TypeOf(entity).String()).
-					Interface("entity_id", entity.GetID()).
-					Msg("Failed to register automatically detected dirty entity")
-				continue
-			}
-
-			detectedCount++
-
-			if uow.config.EnableDetailLog {
-				zlogger.Debug().
-					Str("entity_type", reflect.TypeOf(entity).String()).
-					Interface("entity_id", entity.GetID()).
-					Int("changed_fields", len(changes)).
-					Str("snapshot_key", key).
-					Msg("Automatically detected dirty entity")
-			}
-		}
-	}
-
-	if uow.config.EnableDetailLog {
-		zlogger.Debug().
-			Int("detected_count", detectedCount).
-			Int("total_snapshots", len(snapshots)).
-			Msg("Automatic dirty entity detection completed")
-	}
-
-	return nil
-}
-
-// findEntityBySnapshot 根据快照查找对应的实体
-func (uow *UnitOfWork) findEntityBySnapshot(snapshot *EntitySnapshot) Entity {
-	// 在新实体中查找
-	if entities, exists := uow.newEntities[snapshot.entityType]; exists {
-		for _, entity := range entities {
-			if entity.GetID() == snapshot.entityID {
-				return entity
-			}
-		}
-	}
-
-	// 在脏实体中查找
-	if entities, exists := uow.dirtyEntities[snapshot.entityType]; exists {
-		for _, entity := range entities {
-			if entity.GetID() == snapshot.entityID {
-				return entity
-			}
-		}
-	}
-
-	// 在删除实体中查找
-	if entities, exists := uow.removedEntities[snapshot.entityType]; exists {
-		for _, entity := range entities {
-			if entity.GetID() == snapshot.entityID {
-				return entity
-			}
-		}
-	}
-
-	if entities, exists := uow.cleanEntities[snapshot.entityType]; exists {
-		for _, entity := range entities {
-			if entity.GetID() == snapshot.entityID {
-				return entity
-			}
-		}
-	}
-	return nil
-}
-
-// isEntityAlreadyTracked 检查实体是否已经被跟踪
-func (uow *UnitOfWork) isEntityAlreadyTracked(entity Entity) bool {
-	return uow.containsEntity(uow.newEntities, entity) ||
-		uow.containsEntity(uow.dirtyEntities, entity) ||
-		uow.containsEntity(uow.removedEntities, entity)
-}
-
-// registerDirtyEntityInternal 内部注册脏实体方法（不加锁）
-func (uow *UnitOfWork) registerDirtyEntityInternal(entity Entity, changes map[string]FieldChange) error {
-	if uow.isCommitted || uow.isRolledBack {
-		return fmt.Errorf("unit of work is already finished")
-	}
-
-	if entity == nil {
-		return fmt.Errorf("entity cannot be nil")
-	}
-
-	entityType := reflect.TypeOf(entity)
-
-	// 如果是新实体，不需要标记为脏
-	if uow.containsEntity(uow.newEntities, entity) {
-		return nil
-	}
-
-	// 检查是否已经标记为删除
-	if uow.containsEntity(uow.removedEntities, entity) {
-		return fmt.Errorf("cannot mark removed entity as dirty")
-	}
-
-	// 检查是否已经标记为脏
-	if uow.containsEntity(uow.dirtyEntities, entity) {
-		return nil
-	}
-
-	// 添加到脏实体列表
-	uow.dirtyEntities[entityType] = append(uow.dirtyEntities[entityType], entity)
-
-	// 添加操作
-	operation := NewUpdateOperation(entity, changes)
-	uow.addOperation(operation)
 
 	return nil
 }
@@ -861,7 +666,6 @@ func (uow *UnitOfWork) clear() {
 	uow.newEntities = make(map[reflect.Type][]Entity)
 	uow.dirtyEntities = make(map[reflect.Type][]Entity)
 	uow.removedEntities = make(map[reflect.Type][]Entity)
-	uow.cleanEntities = make(map[reflect.Type][]Entity)
 	uow.operations = make([]Operation, 0)
 	uow.snapshotManager.Clear()
 }
