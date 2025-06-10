@@ -34,6 +34,7 @@ type UnitOfWork struct {
 	// 状态标志
 	isCommitted  bool
 	isRolledBack bool
+	isExecuting  bool
 
 	// 同步锁
 	mu sync.RWMutex
@@ -321,10 +322,16 @@ func (uow *UnitOfWork) Commit() error {
 		Int("total_operations", len(uow.operations)).
 		Msg("Starting unit of work commit")
 
-	// 在事务中执行所有操作
-	err := uow.db.WithContext(uow.ctx).Transaction(func(tx *gorm.DB) error {
-		return uow.executeOperations(tx)
-	})
+	// 设置执行状态，然后释放锁执行操作，避免死锁
+	uow.isExecuting = true
+	uow.mu.Unlock()
+	
+	// 执行所有操作
+	err := uow.executeOperations(uow.db)
+	
+	// 重新获取锁并清除执行状态
+	uow.mu.Lock()
+	uow.isExecuting = false
 
 	if err != nil {
 		zlogger.Error().Err(err).Msg("Unit of work commit failed")

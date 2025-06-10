@@ -104,7 +104,7 @@ func (op *InsertOperation) Execute(db *gorm.DB) error {
 		timestamped.SetUpdatedAt(now)
 	}
 
-	// 执行插入
+	// 执行插入 - 直接使用原始数据库连接
 	result := db.Create(op.entity)
 	if result.Error != nil {
 		return fmt.Errorf("failed to insert entity %T: %w", op.entity, result.Error)

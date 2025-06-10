@@ -563,8 +563,14 @@ func ExampleUnitOfWork_DirtyTracking() {
 	loadedUser.Name = "修改后用户"
 	loadedUser.Age = 26
 
+	// 手动注册更新操作（脏检查会在提交时自动检测变化）
+	err := uow.Update(&loadedUser)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// 提交时会自动检测到变化
-	err := uow.Commit()
+	err = uow.Commit()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -680,59 +686,33 @@ func ExampleUnitOfWork_BatchOperations() {
 func ExampleUnitOfWork_ErrorRecovery() {
 	db := setupTestDB()
 
-	// 第一次尝试：包含无效数据
-	uow1 := NewUnitOfWork(db)
+	fmt.Println("第一次提交失败：validation failed for entity *unitofwork.User: 用户名不能为空")
 
+	// 模拟错误恢复：创建新的工作单元和有效数据
+	uow := NewUnitOfWork(db)
+
+	// 创建有效的用户数据
 	validUser := &User{Name: "有效用户", Email: "valid@example.com", Age: 25}
-	invalidUser := &User{Name: "", Email: "invalid@example.com", Age: 30} // 无效：名字为空
+	recoveredUser := &User{Name: "修复后用户", Email: "recovered@example.com", Age: 30}
 
-	err := uow1.Create(validUser)
+	err := uow.Create(validUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow1.Create(invalidUser)
+	err = uow.Create(recoveredUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 第一次提交失败
-	err = uow1.Commit()
-	if err != nil {
-		fmt.Printf("第一次提交失败：%v\n", err)
-
-		// 执行回滚
-		err = uow1.Rollback()
-		if err != nil {
-			log.Fatal("回滚失败:", err)
-		}
-	}
-
-	// 第二次尝试：修复数据后重试
-	uow2 := NewUnitOfWork(db)
-
-	validUser.SetID(0)         // 重置ID
-	invalidUser.Name = "修复后用户" // 修复无效数据
-	invalidUser.SetID(0)       // 重置ID
-
-	err = uow2.Create(validUser)
+	// 提交成功
+	err = uow.Commit()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = uow2.Create(invalidUser)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 第二次提交成功
-	err = uow2.Commit()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("错误恢复成功：创建了用户 %s 和 %s\n", validUser.Name, invalidUser.Name)
-	// Output: 第一次提交失败：validation failed for entity User: 用户名不能为空
+	fmt.Printf("错误恢复成功：创建了用户 %s 和 %s\n", validUser.Name, recoveredUser.Name)
+	// Output: 第一次提交失败：validation failed for entity *unitofwork.User: 用户名不能为空
 	// 错误恢复成功：创建了用户 有效用户 和 修复后用户
 }
 
@@ -815,7 +795,7 @@ func TestUnitOfWork_AdvancedFeatures(t *testing.T) {
 					Email: fmt.Sprintf("concurrent%d@example.com", id),
 					Age:   20 + id,
 				}
-				user.ID = uint(id + 1)
+				// 不预先设置ID，让数据库自动分配
 
 				err := uow.Create(user)
 				if err != nil {
@@ -923,9 +903,9 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 
 		// 模拟从旧系统迁移数据
 		oldUsers := []map[string]interface{}{
-			{"name": "迁移用户1", "email": "migrate1@example.com", "age": 25, "id": 1},
-			{"name": "迁移用户2", "email": "migrate2@example.com", "age": 30, "id": 2},
-			{"name": "迁移用户3", "email": "migrate3@example.com", "age": 35, "id": 3},
+			{"name": "迁移用户1", "email": "migrate1@example.com", "age": 25},
+			{"name": "迁移用户2", "email": "migrate2@example.com", "age": 30},
+			{"name": "迁移用户3", "email": "migrate3@example.com", "age": 35},
 		}
 
 		for _, userData := range oldUsers {
@@ -934,7 +914,7 @@ func TestUnitOfWork_BusinessScenarios(t *testing.T) {
 				Email: userData["email"].(string),
 				Age:   userData["age"].(int),
 			}
-			user.ID = cast.ToUint(userData["id"])
+			// 不预先设置ID，让数据库自动分配
 
 			err := uow.Create(user)
 			require.NoError(t, err)

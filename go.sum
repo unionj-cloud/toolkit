@@ -710,8 +710,6 @@ github.com/vmihailenco/msgpack/v5 v5.3.5 h1:5gO0H1iULLWGhs2H5tbAHIZTV8/cYafcFOr9
 github.com/vmihailenco/msgpack/v5 v5.3.5/go.mod h1:7xyJ9e+0+9SaZT0Wt1RGleJXzli6Q/V5KbhBonMG9jc=
 github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAhO7/IwNM9g=
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
-github.com/wubin1989/gorm v0.0.5 h1:eI+zjoQ2GEURnPBEh+H4axSD4sM0wWpJCAQZw+FfZX8=
-github.com/wubin1989/gorm v0.0.5/go.mod h1:q/wDV7AJMsbDdtv+K3eNX+VMpC0k1uxCqPBPXzHO90k=
 github.com/wubin1989/gorm-dameng v0.5.1 h1:gQWt5W05skWd9rSxq0BGllJV/jvqOnabqUeUYZST78s=
 github.com/wubin1989/gorm-dameng v0.5.1/go.mod h1:hc31clFQ1+pDH4mYZWVFZ62cjLbeFRKg8FoXWcoyQEc=
 github.com/wubin1989/mysql v0.0.2 h1:OgJ3LS6LfCBtWboQ2ghw6UXETMWyNb2fe2MLBELIpDg=
