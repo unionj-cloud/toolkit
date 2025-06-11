@@ -2,11 +2,10 @@ package fileutils
 
 import (
 	"bufio"
-	"context"
 	"io"
 	"os"
 
-	"github.com/mholt/archives"
+	"github.com/mholt/archiver/v3"
 	"github.com/pkg/errors"
 )
 
@@ -50,37 +49,5 @@ func LinesFromReader(r io.Reader) ([]string, error) {
 }
 
 func Archive(output string, sources ...string) error {
-	ctx := context.Background()
-
-	// 通过文件扩展名自动识别格式
-	format, _, err := archives.Identify(ctx, output, nil)
-	if err != nil {
-		return err
-	}
-
-	archiver, ok := format.(archives.Archiver)
-	if !ok {
-		return errors.New("不支持的归档格式")
-	}
-
-	// 创建输出文件
-	out, err := os.Create(output)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// 准备源文件映射和文件列表
-	filesMap := make(map[string]string)
-	for _, source := range sources {
-		filesMap[source] = ""
-	}
-
-	files, err := archives.FilesFromDisk(ctx, nil, filesMap)
-	if err != nil {
-		return err
-	}
-
-	// 创建归档
-	return archiver.Archive(ctx, out, files)
+	return archiver.Archive(sources, output)
 }
