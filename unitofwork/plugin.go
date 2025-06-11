@@ -394,6 +394,12 @@ func (p *Plugin) afterCreate(db *gorm.DB) {
 		return
 	}
 
+	// 尝试从上下文获取工作单元
+	uow := GetUnitOfWorkFromContext(db.Statement.Context, p.config.ContextKey)
+	if uow == nil {
+		return
+	}
+
 	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
 		p.processEntities(db, func(entity Entity) error {
@@ -412,6 +418,12 @@ func (p *Plugin) afterUpdate(db *gorm.DB) {
 		return
 	}
 
+	// 尝试从上下文获取工作单元
+	uow := GetUnitOfWorkFromContext(db.Statement.Context, p.config.ContextKey)
+	if uow == nil {
+		return
+	}
+
 	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
 		p.processEntities(db, func(entity Entity) error {
@@ -427,6 +439,12 @@ func (p *Plugin) afterUpdate(db *gorm.DB) {
 // afterDelete 删除后回调
 func (p *Plugin) afterDelete(db *gorm.DB) {
 	if !p.config.AutoManage {
+		return
+	}
+
+	// 尝试从上下文获取工作单元
+	uow := GetUnitOfWorkFromContext(db.Statement.Context, p.config.ContextKey)
+	if uow == nil {
 		return
 	}
 
