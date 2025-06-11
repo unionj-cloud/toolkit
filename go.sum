@@ -672,6 +672,8 @@ github.com/wubin1989/mysql v0.0.2 h1:OgJ3LS6LfCBtWboQ2ghw6UXETMWyNb2fe2MLBELIpDg
 github.com/wubin1989/mysql v0.0.2/go.mod h1:X6kei/oCZkghaulJzYjIEnFQLe59WYFMczj4hDObDN8=
 github.com/wubin1989/postgres v0.0.2 h1:skgTBzvhXouB8sk8QW3CIL12IHc4yjxp0HFlmQWk+w0=
 github.com/wubin1989/postgres v0.0.2/go.mod h1:ak4xecaBWCvjryICTXlDtHwkK8QV1ibtBF/d2YzI+lw=
+github.com/wubin1989/sqlite v0.0.3 h1:HpeLMcNQ0pFHCk3QNAYjYUt6OpZiWykBe1o5FC6NxTg=
+github.com/wubin1989/sqlite v0.0.3/go.mod h1:sJwi+4OqdP6KL56LUuJsqeubNREEpNpj+/Hp3YZ9zQI=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f/go.mod h1:N2zxlSyiKSe5eX1tZViRH5QA0qijqEDrYZiPEAiq3wU=
