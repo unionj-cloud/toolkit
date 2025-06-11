@@ -158,6 +158,9 @@ func (p *Plugin) processEntities(db *gorm.DB, processor func(Entity) error) erro
 		return nil
 	}
 
+	// 初始化影响行数为0
+	db.RowsAffected = 0
+
 	destValue := reflect.ValueOf(db.Statement.Dest)
 	if destValue.Kind() == reflect.Ptr {
 		destValue = destValue.Elem()
@@ -167,7 +170,12 @@ func (p *Plugin) processEntities(db *gorm.DB, processor func(Entity) error) erro
 	case reflect.Struct:
 		// 单个实体
 		if entity, ok := db.Statement.Dest.(Entity); ok {
-			return processor(entity)
+			if err := processor(entity); err != nil {
+				return err
+			}
+			// 成功处理单个实体，设置影响行数为1
+			db.RowsAffected = 1
+			return nil
 		}
 		return nil
 	case reflect.Slice:
@@ -192,14 +200,17 @@ func (p *Plugin) processEntities(db *gorm.DB, processor func(Entity) error) erro
 			}
 		}
 		// 设置影响的行数
-		if processedCount > 0 {
-			db.RowsAffected = int64(processedCount)
-		}
+		db.RowsAffected = int64(processedCount)
 		return nil
 	default:
 		// 尝试直接转换
 		if entity, ok := db.Statement.Dest.(Entity); ok {
-			return processor(entity)
+			if err := processor(entity); err != nil {
+				return err
+			}
+			// 成功处理实体，设置影响行数为1
+			db.RowsAffected = 1
+			return nil
 		}
 		return nil
 	}
