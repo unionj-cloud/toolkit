@@ -152,6 +152,59 @@ func (p *Plugin) registerCallbacks(db *gorm.DB) error {
 	return nil
 }
 
+// processEntities 处理db.Statement.Dest中的实体，支持单个实体或实体切片
+func (p *Plugin) processEntities(db *gorm.DB, processor func(Entity) error) error {
+	if db.Statement.Dest == nil {
+		return nil
+	}
+
+	destValue := reflect.ValueOf(db.Statement.Dest)
+	if destValue.Kind() == reflect.Ptr {
+		destValue = destValue.Elem()
+	}
+
+	switch destValue.Kind() {
+	case reflect.Struct:
+		// 单个实体
+		if entity, ok := db.Statement.Dest.(Entity); ok {
+			return processor(entity)
+		}
+		return nil
+	case reflect.Slice:
+		// 实体切片
+		var processedCount int
+		for i := 0; i < destValue.Len(); i++ {
+			item := destValue.Index(i)
+			if item.Kind() == reflect.Ptr && !item.IsNil() {
+				if entity, ok := item.Interface().(Entity); ok {
+					if err := processor(entity); err != nil {
+						return err
+					}
+					processedCount++
+				}
+			} else if item.CanInterface() {
+				if entity, ok := item.Interface().(Entity); ok {
+					if err := processor(entity); err != nil {
+						return err
+					}
+					processedCount++
+				}
+			}
+		}
+		// 设置影响的行数
+		if processedCount > 0 {
+			db.RowsAffected = int64(processedCount)
+		}
+		return nil
+	default:
+		// 尝试直接转换
+		if entity, ok := db.Statement.Dest.(Entity); ok {
+			return processor(entity)
+		}
+		return nil
+	}
+}
+
 // unitOfWorkCreate 工作单元创建回调，替换 gorm:create
 func (p *Plugin) unitOfWorkCreate(db *gorm.DB) {
 	if !p.config.AutoManage {
@@ -181,16 +234,11 @@ func (p *Plugin) unitOfWorkCreate(db *gorm.DB) {
 		return
 	}
 
-	// 如果实体实现了Entity接口，注册到工作单元
-	if entity, ok := db.Statement.Dest.(Entity); ok {
+	// 处理实体（支持单个实体或实体切片）
+	err := p.processEntities(db, func(entity Entity) error {
 		if err := uow.Create(entity); err != nil {
-			zlogger.Error().Err(err).Msg("Failed to register entity for creation")
-			db.AddError(err)
-			return
+			return err
 		}
-
-		// 跳过实际的数据库操作，只设置 RowsAffected
-		db.RowsAffected = 1
 
 		if p.config.UnitOfWorkConfig.EnableDetailLog {
 			zlogger.Debug().
@@ -198,8 +246,17 @@ func (p *Plugin) unitOfWorkCreate(db *gorm.DB) {
 				Interface("entity_id", entity.GetID()).
 				Msg("Entity registered for creation in unit of work")
 		}
-	} else {
-		// 如果不是Entity接口，则调用原始的 GORM Create 逻辑
+		return nil
+	})
+
+	if err != nil {
+		zlogger.Error().Err(err).Msg("Failed to register entity for creation")
+		db.AddError(err)
+		return
+	}
+
+	// 如果没有处理任何实体，则调用原始的 GORM Create 逻辑
+	if db.RowsAffected == 0 {
 		if p.originalCreate != nil {
 			p.originalCreate(db)
 		}
@@ -235,24 +292,28 @@ func (p *Plugin) unitOfWorkUpdate(db *gorm.DB) {
 		return
 	}
 
-	// 如果实体实现了Entity接口，注册到工作单元
-	if entity, ok := db.Statement.Dest.(Entity); ok {
+	// 处理实体（支持单个实体或实体切片）
+	err := p.processEntities(db, func(entity Entity) error {
 		if err := uow.Update(entity); err != nil {
-			zlogger.Error().Err(err).Msg("Failed to register entity for update")
-			db.AddError(err)
-			return
+			return err
 		}
-
-		// 跳过实际的数据库操作，只设置 RowsAffected
-		db.RowsAffected = 1
 
 		if p.config.UnitOfWorkConfig.EnableDetailLog {
 			zlogger.Debug().
 				Str("entity_type", reflect.TypeOf(entity).String()).
 				Msg("Entity registered for update in unit of work")
 		}
-	} else {
-		// 如果不是Entity接口，则调用原始的 GORM Update 逻辑
+		return nil
+	})
+
+	if err != nil {
+		zlogger.Error().Err(err).Msg("Failed to register entity for update")
+		db.AddError(err)
+		return
+	}
+
+	// 如果没有处理任何实体，则调用原始的 GORM Update 逻辑
+	if db.RowsAffected == 0 {
 		if p.originalUpdate != nil {
 			p.originalUpdate(db)
 		}
@@ -288,24 +349,28 @@ func (p *Plugin) unitOfWorkDelete(db *gorm.DB) {
 		return
 	}
 
-	// 如果实体实现了Entity接口，注册到工作单元
-	if entity, ok := db.Statement.Dest.(Entity); ok {
+	// 处理实体（支持单个实体或实体切片）
+	err := p.processEntities(db, func(entity Entity) error {
 		if err := uow.Delete(entity); err != nil {
-			zlogger.Error().Err(err).Msg("Failed to register entity for deletion")
-			db.AddError(err)
-			return
+			return err
 		}
-
-		// 跳过实际的数据库操作，只设置 RowsAffected
-		db.RowsAffected = 1
 
 		if p.config.UnitOfWorkConfig.EnableDetailLog {
 			zlogger.Debug().
 				Str("entity_type", reflect.TypeOf(entity).String()).
 				Msg("Entity registered for deletion in unit of work")
 		}
-	} else {
-		// 如果不是Entity接口，则调用原始的 GORM Delete 逻辑
+		return nil
+	})
+
+	if err != nil {
+		zlogger.Error().Err(err).Msg("Failed to register entity for deletion")
+		db.AddError(err)
+		return
+	}
+
+	// 如果没有处理任何实体，则调用原始的 GORM Delete 逻辑
+	if db.RowsAffected == 0 {
 		if p.originalDelete != nil {
 			p.originalDelete(db)
 		}
@@ -318,14 +383,15 @@ func (p *Plugin) afterCreate(db *gorm.DB) {
 		return
 	}
 
-	// 这里可以添加创建后的处理逻辑
+	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
-		if entity, ok := db.Statement.Dest.(Entity); ok {
+		p.processEntities(db, func(entity Entity) error {
 			zlogger.Debug().
 				Str("entity_type", reflect.TypeOf(entity).String()).
 				Interface("entity_id", entity.GetID()).
-				Msg("Entity registered for creation in unit of work")
-		}
+				Msg("Entity created in unit of work")
+			return nil
+		})
 	}
 }
 
@@ -335,14 +401,15 @@ func (p *Plugin) afterUpdate(db *gorm.DB) {
 		return
 	}
 
-	// 这里可以添加更新后的处理逻辑
+	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
-		if entity, ok := db.Statement.Dest.(Entity); ok {
+		p.processEntities(db, func(entity Entity) error {
 			zlogger.Debug().
 				Str("entity_type", reflect.TypeOf(entity).String()).
 				Interface("entity_id", entity.GetID()).
-				Msg("Entity registered for update in unit of work")
-		}
+				Msg("Entity updated in unit of work")
+			return nil
+		})
 	}
 }
 
@@ -352,14 +419,15 @@ func (p *Plugin) afterDelete(db *gorm.DB) {
 		return
 	}
 
-	// 这里可以添加删除后的处理逻辑
+	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
-		if entity, ok := db.Statement.Dest.(Entity); ok {
+		p.processEntities(db, func(entity Entity) error {
 			zlogger.Debug().
 				Str("entity_type", reflect.TypeOf(entity).String()).
 				Interface("entity_id", entity.GetID()).
-				Msg("Entity registered for deletion in unit of work")
-		}
+				Msg("Entity deleted in unit of work")
+			return nil
+		})
 	}
 }
 
@@ -472,44 +540,15 @@ func (p *Plugin) afterQuery(db *gorm.DB) {
 		return
 	}
 
-	// 为查询到的实体创建快照
-	if db.Statement.Dest != nil {
-		destValue := reflect.ValueOf(db.Statement.Dest)
-		if destValue.Kind() == reflect.Ptr {
-			destValue = destValue.Elem()
+	// 处理实体（支持单个实体或实体切片）
+	p.processEntities(db, func(entity Entity) error {
+		uow.TakeSnapshot(entity)
+		if p.config.UnitOfWorkConfig.EnableDetailLog {
+			zlogger.Debug().
+				Str("entity_type", reflect.TypeOf(entity).String()).
+				Interface("entity_id", entity.GetID()).
+				Msg("Created snapshot for queried entity")
 		}
-
-		switch destValue.Kind() {
-		case reflect.Struct:
-			// 单个实体
-			if entity, ok := db.Statement.Dest.(Entity); ok {
-				uow.TakeSnapshot(entity)
-				if p.config.UnitOfWorkConfig.EnableDetailLog {
-					zlogger.Debug().
-						Str("entity_type", reflect.TypeOf(entity).String()).
-						Interface("entity_id", entity.GetID()).
-						Msg("Created snapshot for queried entity")
-				}
-			}
-		case reflect.Slice:
-			// 实体切片
-			for i := 0; i < destValue.Len(); i++ {
-				item := destValue.Index(i)
-				if item.Kind() == reflect.Ptr {
-					item = item.Elem()
-				}
-				if item.CanInterface() {
-					if entity, ok := item.Interface().(Entity); ok {
-						uow.TakeSnapshot(entity)
-						if p.config.UnitOfWorkConfig.EnableDetailLog {
-							zlogger.Debug().
-								Str("entity_type", reflect.TypeOf(entity).String()).
-								Interface("entity_id", entity.GetID()).
-								Msg("Created snapshot for queried entity")
-						}
-					}
-				}
-			}
-		}
-	}
+		return nil
+	})
 }
