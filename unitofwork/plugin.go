@@ -152,6 +152,42 @@ func (p *Plugin) registerCallbacks(db *gorm.DB) error {
 	return nil
 }
 
+func (p *Plugin) checkDest(db *gorm.DB) bool {
+	if db.Statement.Dest == nil {
+		return false
+	}
+
+	destValue := reflect.ValueOf(db.Statement.Dest)
+	if destValue.Kind() == reflect.Ptr {
+		destValue = destValue.Elem()
+	}
+
+	switch destValue.Kind() {
+	case reflect.Struct:
+		// 单个实体
+		if entity, ok := db.Statement.Dest.(Entity); ok {
+			return entity.GetID() > 0
+		}
+		return false
+	case reflect.Slice:
+		for i := 0; i < destValue.Len(); i++ {
+			item := destValue.Index(i)
+			if item.Kind() == reflect.Ptr && !item.IsNil() {
+				if entity, ok := item.Interface().(Entity); ok {
+					return entity.GetID() > 0
+				}
+			} else if item.CanInterface() {
+				if entity, ok := item.Interface().(Entity); ok {
+					return entity.GetID() > 0
+				}
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
 // processEntities 处理db.Statement.Dest中的实体，支持单个实体或实体切片
 func (p *Plugin) processEntities(db *gorm.DB, processor func(Entity) error) error {
 	if db.Statement.Dest == nil {
@@ -303,6 +339,13 @@ func (p *Plugin) unitOfWorkUpdate(db *gorm.DB) {
 		return
 	}
 
+	if ok := p.checkDest(db); !ok {
+		if p.originalUpdate != nil {
+			p.originalUpdate(db)
+		}
+		return
+	}
+
 	// 处理实体（支持单个实体或实体切片）
 	err := p.processEntities(db, func(entity Entity) error {
 		if err := uow.Update(entity); err != nil {
@@ -354,6 +397,13 @@ func (p *Plugin) unitOfWorkDelete(db *gorm.DB) {
 
 	// 如果工作单元正在执行操作，直接调用原始回调避免死锁
 	if p.isExecuting(uow) {
+		if p.originalDelete != nil {
+			p.originalDelete(db)
+		}
+		return
+	}
+
+	if ok := p.checkDest(db); !ok {
 		if p.originalDelete != nil {
 			p.originalDelete(db)
 		}
@@ -424,6 +474,10 @@ func (p *Plugin) afterUpdate(db *gorm.DB) {
 		return
 	}
 
+	if ok := p.checkDest(db); !ok {
+		return
+	}
+
 	// 处理实体（支持单个实体或实体切片）
 	if p.config.UnitOfWorkConfig.EnableDetailLog {
 		p.processEntities(db, func(entity Entity) error {
@@ -445,6 +499,10 @@ func (p *Plugin) afterDelete(db *gorm.DB) {
 	// 尝试从上下文获取工作单元
 	uow := GetUnitOfWorkFromContext(db.Statement.Context, p.config.ContextKey)
 	if uow == nil {
+		return
+	}
+
+	if ok := p.checkDest(db); !ok {
 		return
 	}
 
@@ -566,6 +624,10 @@ func (p *Plugin) afterQuery(db *gorm.DB) {
 	// 尝试从上下文获取工作单元
 	uow := GetUnitOfWorkFromContext(db.Statement.Context, p.config.ContextKey)
 	if uow == nil {
+		return
+	}
+
+	if ok := p.checkDest(db); !ok {
 		return
 	}
 
