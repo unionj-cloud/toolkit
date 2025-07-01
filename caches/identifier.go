@@ -24,7 +24,12 @@ func buildIdentifier(db *gorm.DB) string {
 	query = db.Statement.SQL.String()
 	vars := lo.Map[interface{}, interface{}](db.Statement.Vars, func(item interface{}, index int) interface{} {
 		if reflect.ValueOf(item).Kind() == reflect.Ptr {
-			return reflect.ValueOf(item).Elem().Interface()
+			elem := reflect.ValueOf(item).Elem()
+			if elem.IsValid() && !elem.IsZero() {
+				return elem.Interface()
+			} else {
+				return nil
+			}
 		}
 		return item
 	})
