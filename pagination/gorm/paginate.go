@@ -490,16 +490,16 @@ func arrayToFilter(arr []interface{}, config Config) pageFilters {
 					switch filters.Operator {
 					case "LIKE", "ILIKE", "NOT LIKE", "NOT ILIKE":
 						escapeString := ""
-						escapePattern := `(%|\\)`
+						escapePattern := `(%|\\|_)`
 						if nil != config.Statement {
 							driverName := config.Statement.Dialector.Name()
 							switch driverName {
-							case "sqlite", "sqlserver", "postgres":
+							case "sqlite", "sqlserver", "postgres", "oracle", "mysql":
 								escapeString = `\`
 								filters.ValueSuffix = "ESCAPE '\\'"
-							case "mysql":
+							default:
 								escapeString = `\`
-								filters.ValueSuffix = `ESCAPE '\\'`
+								filters.ValueSuffix = "ESCAPE '\\'"
 							}
 						}
 						value := fmt.Sprintf("%v", i)

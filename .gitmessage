@@ -1,0 +1,14 @@
+# <type>(<scope>): <subject>
+# 
+# Types:
+# feat: 新功能
+# fix: 修复bug
+# docs: 文档更新
+# style: 代码格式
+# refactor: 重构
+# test: 测试
+# chore: 构建/工具
+# perf: 性能优化
+# ci: CI/CD
+# build: 构建系统
+# revert: 回滚
