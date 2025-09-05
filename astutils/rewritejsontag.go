@@ -81,11 +81,12 @@ func RewriteTag(config RewriteTagConfig) (string, error) {
 				continue
 			}
 			tagValue := convert(field.Names[0].Name)
-			hasNameTag := reName.MatchString(field.Tag.Value)
-			if hasNameTag {
-				tagValue = extractNamePropName(field.Tag.Value)
+			if field.Tag != nil {
+				hasNameTag := reName.MatchString(field.Tag.Value)
+				if hasNameTag {
+					tagValue = extractNamePropName(field.Tag.Value)
+				}
 			}
-
 			jsonTagValue := tagValue
 			if omitempty {
 				jsonTagValue += ",omitempty"
