@@ -81,8 +81,14 @@ func GetPkgPath(filePath string) string {
 	firstLine, _ := reader.ReadString('\n')
 	modName := strings.TrimSpace(strings.TrimPrefix(firstLine, "module"))
 	filePath, _ = filepath.Abs(filePath)
+	logrus.Debug(filePath)
 	filePath = filepath.ToSlash(filePath)
-	result := filePath[strings.Index(filePath, modName):]
+	logrus.Debug(filePath)
+	i := strings.Index(filePath, modName)
+	if i == -1 {
+		panic("module name must be contained in file path: " + filePath)
+	}
+	result := filePath[i:]
 	return result
 }
 
